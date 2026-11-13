@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Stack, Box, Typography, Breadcrumbs, Link as MuiLink, Grid, Paper, Button, ButtonBase,
   TextField, MenuItem, InputAdornment,
@@ -15,6 +15,7 @@ import { showToast } from '../../../features/ui/uiSlice';
 import {
   OUTLET_OPTIONS, CASHIER_OPTIONS, DEFAULT_DATE_RANGE, SALES_REPORT_ITEMS,
 } from './salesReportsMockData';
+import { SALES_REPORT_DEFINITIONS } from './salesReportDefinitions';
 
 function formatDisplayDate(iso) {
   const [y, m, d] = iso.split('-');
@@ -73,15 +74,19 @@ function ReportTypeCard({ item, onOpen }) {
 
 /**
  * Sales Reports — the Sales Report category's landing screen, reached from
- * the Reports page's "Sales Report" card. A shared date range / outlet /
- * cashier filter bar sits above a grid of individual sales report types
- * (Daily, Monthly, Outlet-wise, Cashier-wise, Item-wise, Category-wise,
- * Brand-wise, Customer-wise, Hourly, Payment-wise, Discount, Tax, Return).
- * There's no Reports backend module yet, so the filters are local state and
- * every report tile surfaces a "coming soon" toast instead of navigating.
+ * the Reports page's "Sales Report" card. A grid of individual sales report
+ * types (Daily, Monthly, Outlet-wise, Cashier-wise, Item-wise,
+ * Category-wise, Brand-wise, Customer-wise, Hourly, Payment-wise, Discount,
+ * Tax, Return). Hourly / Payment-wise / Discount / Tax / Return
+ * (SALES_REPORT_DEFINITIONS) open real reports; the rest have no backend
+ * yet and still toast "coming soon". The date/outlet/cashier bar on this
+ * landing page itself has no backend meaning (there's nothing to filter
+ * here but the tile grid), so it stays local state — each real report has
+ * its own filters.
  */
 export default function SalesReportsPage() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const [dateFrom, setDateFrom] = useState(DEFAULT_DATE_RANGE.from);
   const [dateTo, setDateTo] = useState(DEFAULT_DATE_RANGE.to);
   const [outlet, setOutlet] = useState('All Outlets');
@@ -96,7 +101,10 @@ export default function SalesReportsPage() {
     setOutlet('All Outlets');
     setCashier('All Cashiers');
   };
-  const handleOpenReport = (item) => dispatch(showToast(`${item.label} report is coming soon`, 'info'));
+  const handleOpenReport = (item) => {
+    if (SALES_REPORT_DEFINITIONS[item.key]) navigate(`/reports/sales/${item.key}`);
+    else dispatch(showToast(`${item.label} report is coming soon`, 'info'));
+  };
 
   return (
     <Stack spacing={2}>

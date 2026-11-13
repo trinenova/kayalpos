@@ -15,6 +15,7 @@ import { showToast } from '../../../features/ui/uiSlice';
 import {
   OUTLET_OPTIONS, CASHIER_OPTIONS, DEFAULT_DATE_RANGE, CASHIER_REPORT_ITEMS,
 } from './cashierReportsMockData';
+import { CASHIER_REPORT_DEFINITIONS } from './cashierReportDefinitions';
 
 function formatDisplayDate(iso) {
   const [y, m, d] = iso.split('-');
@@ -73,12 +74,16 @@ function ReportTypeCard({ item, onOpen }) {
 
 /**
  * Cashier Reports — the Cashier Reports category's landing screen, reached
- * from the Reports page's "Cashier Reports" card. A shared date range /
- * outlet / cashier filter bar sits above a grid of individual cashier
- * report types (Cashier Sales, Shift Summary, Cash Collection, Cash
- * Shortage / Excess, Cash Drawer Report, Payment Reconciliation). There's
- * no Reports backend module yet, so the filters are local state and every
- * report tile surfaces a "coming soon" toast instead of navigating.
+ * from the Reports page's "Cashier Reports" card. A grid of individual
+ * cashier report types (Cashier Sales, Shift Summary, Payment Collection,
+ * Cash Shortage / Excess, Cash Drawer Report, Payment Reconciliation,
+ * Shift-to-Shift Variance). Cashier Sales / Payment Collection / Cash
+ * Shortage-Excess (CASHIER_REPORT_DEFINITIONS) and Shift-to-Shift Variance
+ * (its own dedicated page) open real reports; Shift Summary / Cash Drawer
+ * Report / Payment Reconciliation have no backend yet and still toast
+ * "coming soon". The date/outlet/cashier bar on this landing page itself
+ * has no backend meaning (there's nothing to filter here but the tile
+ * grid), so it stays local state — each real report has its own filters.
  */
 export default function CashierReportsPage() {
   const dispatch = useAppDispatch();
@@ -99,6 +104,7 @@ export default function CashierReportsPage() {
   };
   const handleOpenReport = (item) => {
     if (item.path) navigate(item.path);
+    else if (CASHIER_REPORT_DEFINITIONS[item.key]) navigate(`/reports/cashier/${item.key}`);
     else dispatch(showToast(`${item.label} report is coming soon`, 'info'));
   };
 

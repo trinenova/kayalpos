@@ -57,6 +57,7 @@ import AmountPayableCard from "./components/AmountPayableCard";
 import HeldBillsDialog from "./components/HeldBillsDialog";
 import { PAYMENT_METHODS, WALK_IN_CUSTOMER, TAX_RATE } from "./lineSaleMockData";
 import { printReceipt } from "./receiptPrint";
+import AppLogo from "../../components/common/AppLogo";
 import { useCompanyProfileQuery } from "../../api/companyApi";
 
 // Quick-cash chips next to the "Exact" chip (which fills the bill total).
@@ -706,6 +707,23 @@ export default function LineSalePage() {
       );
       return;
     }
+    // Received amount is mandatory and must cover the bill (Credit sales
+    // are the one method that is legitimately settled later).
+    if (paymentMethod !== "credit") {
+      if (!(Number(receivedAmount) > 0)) {
+        dispatch(showToast("Received amount is required", "warning"));
+        return;
+      }
+      if (changeAmount < 0) {
+        dispatch(
+          showToast(
+            "Received amount cannot be less than the total amount",
+            "warning",
+          ),
+        );
+        return;
+      }
+    }
 
     const payload = {
       customerId:
@@ -739,6 +757,23 @@ export default function LineSalePage() {
       dispatch(
         showToast(`Payment captured — Bill ${sale.billNo} saved`, "success"),
       );
+      // Print the invoice for the saved sale (uses the cart/totals before
+      // resetBill clears them).
+      try {
+        printReceipt({
+          company: companyProfile,
+          billNo: sale.billNo || billNo,
+          cashierName,
+          dateTime,
+          cart,
+          totals,
+          paymentMethod,
+          receivedAmount,
+          changeAmount,
+        });
+      } catch {
+        dispatch(showToast("Sale saved, but the invoice could not be printed", "warning"));
+      }
       resetBill();
       setStep("billing");
     } catch (err) {
@@ -776,6 +811,57 @@ export default function LineSalePage() {
     }
   };
 
+  // F9 = Pay & Print, F10 = Print Invoice (payment step only). A ref keeps
+  // the listener pointing at the latest handlers without re-binding.
+  const shortcutRef = useRef({});
+  shortcutRef.current = {
+    step,
+    pay: handlePayAndPrint,
+    print: handlePrintInvoice,
+    busy: isPaying,
+    proceed: handleProceed,
+    hasItems: cart.length > 0,
+    blocked: addCustomerOpen,
+  };
+  // Enter on the billing step (search/barcode box empty, i.e. the product has
+  // just been picked) = "Continue to Payment". Captured before the inputs'
+  // own handlers so the Enter that selects a product never also proceeds.
+  useEffect(() => {
+    const onEnter = (e) => {
+      if (e.key !== "Enter" || e.repeat) return;
+      const s = shortcutRef.current;
+      if (s.step !== "billing" || !s.hasItems || s.blocked) return;
+      const el = e.target;
+      if (!(el instanceof HTMLElement)) return;
+      if (el.closest('[role="dialog"], [role="listbox"], button, a, textarea'))
+        return;
+      if (el.tagName === "INPUT") {
+        if (el.value !== "") return;
+        if (el.getAttribute("aria-expanded") === "true") return;
+      } else if (el !== document.body) return;
+      e.preventDefault();
+      s.proceed();
+    };
+    window.addEventListener("keydown", onEnter, true);
+    return () => window.removeEventListener("keydown", onEnter, true);
+  }, []);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "F9" && e.key !== "F10") return;
+      const s = shortcutRef.current;
+      if (s.step !== "payment") return;
+      e.preventDefault();
+      if (e.repeat) return;
+      if (e.key === "F9") {
+        if (!s.busy) s.pay();
+      } else {
+        s.print();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <Stack
       spacing={2}
@@ -792,6 +878,11 @@ export default function LineSalePage() {
           : undefined
       }
     >
+      {isFullScreen && (
+        <Box sx={{ alignSelf: "flex-start" }}>
+          <AppLogo iconSize={32} />
+        </Box>
+      )}
       {step === "billing" ? (
         <Stack direction="row" spacing={2} sx={{ alignItems: "stretch" }}>
           <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", flexShrink: 0 }}>

@@ -15,6 +15,21 @@ import PersonOutlineOutlinedIcon from '@mui/icons-material/PersonOutlineOutlined
 
 import { ALL_NAV_ITEMS } from './navConfig';
 import { MASTER_ITEMS } from '../../modules/masters/mastersMockData';
+import { INVENTORY_REPORT_DEFINITIONS } from '../../modules/reports/inventory/inventoryReportDefinitions';
+import { CASHIER_REPORT_DEFINITIONS } from '../../modules/reports/cashier/cashierReportDefinitions';
+import { SALES_REPORT_DEFINITIONS } from '../../modules/reports/sales/salesReportDefinitions';
+
+// /reports/inventory/:reportKey, /reports/cashier/:reportKey and
+// /reports/sales/:reportKey are dynamic routes (InventoryReportDetailPage.jsx
+// / CashierReportDetailPage.jsx / SalesReportDetailPage.jsx), so they can't
+// go in OVERRIDES like every other report sub-page — this maps the same
+// report definitions those pages already read from straight to a tab
+// label, keyed by the URL segment right after /reports/<category>.
+const REPORT_DETAIL_DEFINITIONS = {
+  inventory: INVENTORY_REPORT_DEFINITIONS,
+  cashier: CASHIER_REPORT_DEFINITIONS,
+  sales: SALES_REPORT_DEFINITIONS,
+};
 
 const NAV_BY_PATH = Object.fromEntries(ALL_NAV_ITEMS.map((item) => [item.path, item]));
 const MASTER_BY_PATH = Object.fromEntries(MASTER_ITEMS.map((item) => [item.path, item]));
@@ -110,6 +125,13 @@ export function getPageMeta(pathname, t) {
     const suffix = segments[segments.length - 1];
     if (parentItem && STATUS_LABELS[suffix]) {
       return { label: STATUS_LABELS[suffix](parentLabel), icon: parentItem.icon };
+    }
+    // /reports/inventory/:reportKey and /reports/cashier/:reportKey — look
+    // up the real report name instead of falling through to the generic
+    // "Reports" parent label below.
+    if (segments[0] === 'reports' && segments.length === 3 && REPORT_DETAIL_DEFINITIONS[segments[1]]) {
+      const definition = REPORT_DETAIL_DEFINITIONS[segments[1]][suffix];
+      if (definition) return { label: definition.label, icon: definition.icon || BarChartOutlinedIcon };
     }
     // Dynamic /:module/edit/:id and /:module/view/:id detail routes — label
     // with the record's own id so each record's tab is distinguishable

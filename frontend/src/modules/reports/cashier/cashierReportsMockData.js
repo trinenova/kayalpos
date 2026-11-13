@@ -26,7 +26,7 @@ export const DEFAULT_DATE_RANGE = { from: '2026-05-26', to: '2026-05-26' };
 export const CASHIER_REPORT_ITEMS = [
   { key: 'cashier-sales', label: 'Cashier Sales', description: 'View sales summary and details for individual cashiers.', icon: PersonOutlineOutlinedIcon, color: '#2563EB' },
   { key: 'shift-summary', label: 'Shift Summary', description: 'View shift-wise sales and performance summary.', icon: AccessTimeOutlinedIcon, color: '#22A06B' },
-  { key: 'cash-collection', label: 'Cash Collection', description: 'View cash collected by cashiers during shifts.', icon: PaidOutlinedIcon, color: '#F26B21' },
+  { key: 'payment-collection', label: 'Payment Collection', description: 'View amount collected by cashiers during shifts, split by Cash, UPI and Card.', icon: PaidOutlinedIcon, color: '#F26B21' },
   { key: 'cash-shortage-excess', label: 'Cash Shortage / Excess', description: 'View shortage or excess amount recorded in cash handling.', icon: BalanceOutlinedIcon, color: '#E5484D' },
   { key: 'cash-drawer-report', label: 'Cash Drawer Report', description: 'View cash drawer opening, closing and transaction summary.', icon: PointOfSaleOutlinedIcon, color: '#7C3AED' },
   { key: 'payment-reconciliation', label: 'Payment Reconciliation', description: 'Reconcile payments received with sales transactions.', icon: FactCheckOutlinedIcon, color: '#0EA5A4' },

@@ -41,10 +41,13 @@ import CashierWiseSalesPage from './modules/cashier-panel/CashierWiseSalesPage';
 import ExpensesBookPage from './modules/expenses-book/ExpensesBookPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import SalesReportsPage from './modules/reports/sales/SalesReportsPage';
+import SalesReportDetailPage from './modules/reports/sales/SalesReportDetailPage';
 import InventoryReportsPage from './modules/reports/inventory/InventoryReportsPage';
+import InventoryReportDetailPage from './modules/reports/inventory/InventoryReportDetailPage';
 import PurchaseReportsPage from './modules/reports/purchase/PurchaseReportsPage';
 import CashierReportsPage from './modules/reports/cashier/CashierReportsPage';
 import ShiftVarianceReportPage from './modules/reports/cashier/ShiftVarianceReportPage';
+import CashierReportDetailPage from './modules/reports/cashier/CashierReportDetailPage';
 import FinancialReportsPage from './modules/reports/financial/FinancialReportsPage';
 import SapReportsPage from './modules/reports/sap/SapReportsPage';
 import MasterSyncPage from './modules/master-sync/MasterSyncPage';
@@ -110,10 +113,13 @@ export default function App() {
             <Route path="/expenses-book" element={<ExpensesBookPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/reports/sales" element={<SalesReportsPage />} />
+            <Route path="/reports/sales/:reportKey" element={<SalesReportDetailPage />} />
             <Route path="/reports/inventory" element={<InventoryReportsPage />} />
+            <Route path="/reports/inventory/:reportKey" element={<InventoryReportDetailPage />} />
             <Route path="/reports/purchase" element={<PurchaseReportsPage />} />
             <Route path="/reports/cashier" element={<CashierReportsPage />} />
             <Route path="/reports/cashier/shift-variance" element={<ShiftVarianceReportPage />} />
+            <Route path="/reports/cashier/:reportKey" element={<CashierReportDetailPage />} />
             <Route path="/reports/financial" element={<FinancialReportsPage />} />
             <Route path="/reports/sap" element={<SapReportsPage />} />
             <Route path="/master-sync" element={<MasterSyncPage />} />

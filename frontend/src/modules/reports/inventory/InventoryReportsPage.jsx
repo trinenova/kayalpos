@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Stack, Box, Typography, Breadcrumbs, Link as MuiLink, Grid, Paper, Button, ButtonBase,
   TextField, MenuItem, InputAdornment,
@@ -73,16 +73,19 @@ function ReportTypeCard({ item, onOpen }) {
 
 /**
  * Inventory Reports — the Inventory Report category's landing screen,
- * reached from the Reports page's "Inventory Report" card. A shared date
- * range / outlet / warehouse filter bar sits above a grid of individual
- * inventory report types (Current Stock, Low Stock, Out-of-Stock, Stock
- * Movement, Stock Valuation, Stock Adjustment, Wastage, Batch Expiry, Slow
- * Moving Items, Fast Moving Items, Physical Stock Variance). There's no
- * Reports backend module yet, so the filters are local state and every
- * report tile surfaces a "coming soon" toast instead of navigating.
+ * reached from the Reports page's "Inventory Report" card. A grid of
+ * individual inventory report types (Current Stock, Low Stock, Out-of-Stock,
+ * Stock Movement, Stock Valuation, Stock Adjustment, Wastage, Batch Expiry,
+ * Slow Moving Items, Fast Moving Items, Physical Stock Variance) — each tile
+ * opens its own real report at /reports/inventory/:reportKey (see
+ * InventoryReportDetailPage.jsx), which has its own date/outlet/warehouse
+ * filters scoped to that report. The date/outlet/warehouse bar on this
+ * landing page itself has no backend meaning of its own (there's nothing to
+ * filter here but the tile grid), so it stays local state.
  */
 export default function InventoryReportsPage() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const [dateFrom, setDateFrom] = useState(DEFAULT_DATE_RANGE.from);
   const [dateTo, setDateTo] = useState(DEFAULT_DATE_RANGE.to);
   const [outlet, setOutlet] = useState('All Outlets');
@@ -97,7 +100,7 @@ export default function InventoryReportsPage() {
     setOutlet('All Outlets');
     setWarehouse('All Warehouses');
   };
-  const handleOpenReport = (item) => dispatch(showToast(`${item.label} report is coming soon`, 'info'));
+  const handleOpenReport = (item) => navigate(`/reports/inventory/${item.key}`);
 
   return (
     <Stack spacing={2}>
