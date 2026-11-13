@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Paper, Box, Autocomplete, TextField, Button, InputAdornment, IconButton, Typography, CircularProgress,
+  Paper, Box, Autocomplete, TextField, Button, InputAdornment, Typography, CircularProgress,
 } from '@mui/material';
-import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined';
-import QrCodeScannerOutlinedIcon from '@mui/icons-material/QrCodeScannerOutlined';
 import PersonOutlineOutlinedIcon from '@mui/icons-material/PersonOutlineOutlined';
 import LocalPhoneOutlinedIcon from '@mui/icons-material/LocalPhoneOutlined';
 
@@ -13,7 +11,6 @@ import { selectCurrentUser } from '../../../features/auth/authSlice';
 import { WALK_IN_CUSTOMER } from '../lineSaleMockData';
 import { getRecentCustomers, addRecentCustomer } from '../recentCustomers';
 import useDebouncedValue from '../../../hooks/useDebouncedValue';
-import { formatCurrency } from '../../../utils/format';
 
 // Reserved code for the tenant's dedicated Walk-in Customer row (see
 // backend/src/modules/customer/customer.service.js) — it's a real Customer
@@ -34,29 +31,12 @@ function toOption(row) {
 }
 
 /**
- * Single bar above the Current Sale / Bill Summary panels: a live item
- * search (shows matching products as you type — by code or name — and adds
- * the picked one straight to the cart; Enter still adds on an exact/unique
- * match for fast barcode scanning without waiting on the dropdown), the
- * customer search (same Autocomplete logic BillSummaryRow used to render in
- * its own card), a read-only mobile-number display for whichever customer
- * is selected, and "Add Customer".
+ * Customer bar above the Current Sale / Bill Summary panels: the customer
+ * search, a read-only mobile-number display for whichever customer is
+ * selected, and "Add Customer". (Item scan/search now lives in the Current
+ * Sale table itself — see ItemSearchRow.)
  */
-export default function CustomerSearchBar({
-  customer, onSelectCustomer, onAddCustomer, products = [], onAddItemByQuery,
-}) {
-  const [query, setQuery] = useState('');
-
-  // Products matching the current text, by code or name — capped so the
-  // dropdown stays short while the cashier is still typing.
-  const productOptions = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return products
-      .filter((p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
-      .slice(0, 25);
-  }, [products, query]);
-
+export default function CustomerSearchBar({ customer, onSelectCustomer, onAddCustomer }) {
   // ---- Customer search (server-side) --------------------------------
   const user = useAppSelector(selectCurrentUser);
   const [customerInput, setCustomerInput] = useState('');
@@ -108,97 +88,15 @@ export default function CustomerSearchBar({
   if (!searchActive) customerNoOptionsText = `Type at least ${MIN_SEARCH_CHARS} characters to search`;
   else if (customerSearchFailed) customerNoOptionsText = 'Couldn’t search customers — try again';
 
-  const handleSubmitQuery = () => {
-    const trimmed = query.trim();
-    if (!trimmed) return;
-    onAddItemByQuery(trimmed);
-    setQuery('');
-  };
-
   return (
     <Paper variant="outlined" sx={{ borderRadius: 3, px: 2, py: 1.5 }}>
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' },
+          gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
           gap: 1.5,
         }}
       >
-        <Autocomplete
-          size="small"
-          fullWidth
-          freeSolo
-          clearOnBlur={false}
-          options={productOptions}
-          inputValue={query}
-          onInputChange={(_e, value, reason) => {
-            // Ignore the 'reset' notification Autocomplete fires right after
-            // a selection clears the field below — that would otherwise
-            // overwrite the empty string we just set with the old text.
-            if (reason === 'reset') return;
-            setQuery(value);
-          }}
-          getOptionLabel={(option) => (typeof option === 'string' ? option : option.name)}
-          isOptionEqualToValue={(option, value) => Boolean(value) && option.code === value.code}
-          filterOptions={(opts) => opts}
-          value={null}
-          onChange={(_e, value) => {
-            if (value && typeof value !== 'string') {
-              onAddItemByQuery(value.code);
-              setQuery('');
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && productOptions.length === 0) {
-              e.stopPropagation();
-              handleSubmitQuery();
-            }
-          }}
-          noOptionsText="No matching items"
-          renderOption={(props, option) => {
-            const { key, ...optionProps } = props;
-            return (
-              <li key={key} {...optionProps}>
-                <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                  <Typography variant="body2" noWrap>{option.name}</Typography>
-                  <Typography variant="caption" color="text.secondary" noWrap>
-                    {option.code} · {formatCurrency(Number(option.salePrice))} · {option.availableQty} {option.uom} in stock
-                  </Typography>
-                </Box>
-              </li>
-            );
-          }}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              size="small"
-              placeholder="Scan Barcode or Search Item name / code"
-              slotProps={{
-                ...params.slotProps,
-                input: {
-                  ...params.slotProps?.input,
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <>
-                      <InputAdornment position="end">
-                        <IconButton size="small" onClick={handleSubmitQuery}>
-                          <QrCodeScannerOutlinedIcon fontSize="small" />
-                        </IconButton>
-                      </InputAdornment>
-                      {params.slotProps?.input?.endAdornment}
-                    </>
-                  ),
-                },
-              }}
-            />
-          )}
-          sx={{ minWidth: 0 }}
-        />
-
         <Autocomplete
           size="small"
           fullWidth

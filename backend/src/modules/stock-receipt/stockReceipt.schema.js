@@ -13,6 +13,7 @@ const itemRowSchema = z.object({
   itemCode: z.string().trim().min(1, 'Item code is required'),
   itemName: z.string().trim().min(1, 'Item name is required'),
   hsnCode: z.string().trim().optional().or(z.literal('')),
+  barcode: z.string().trim().optional().or(z.literal('')),
   uom: z.string().trim().optional().or(z.literal('')),
   orderedQty: z.coerce.number().min(0, 'Ordered qty cannot be negative').default(0),
   receivedQty: z.coerce.number().positive('Received qty must be greater than 0'),

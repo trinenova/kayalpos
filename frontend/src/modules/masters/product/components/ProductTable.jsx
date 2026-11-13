@@ -12,6 +12,7 @@ import { PRODUCT_GROUP_COLORS } from '../productMockData';
 
 const COLUMNS = [
   { key: 'code', label: 'Product Code' },
+  { key: 'shortId', label: 'Short ID' },
   { key: 'name', label: 'Product Name' },
   { key: 'group', label: 'Product Group' },
   { key: 'productType', label: 'Product Type' },
@@ -60,6 +61,7 @@ function ProductRow({ row, onOpenProduct, onEditRow, onDeleteRow, style }) {
           </MuiLink>
         </Stack>
       </TableCell>
+      <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.shortId || '—'}</TableCell>
       <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.name}</TableCell>
       <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.group}</TableCell>
       <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.productType || '—'}</TableCell>
@@ -125,7 +127,7 @@ function EmptyRow() {
 function PlainProductTable({ rows, onOpenProduct, onEditRow, onDeleteRow }) {
   return (
     <Box sx={{ overflowX: 'auto' }}>
-      <Table size="small" sx={{ minWidth: 1470 }}>
+      <Table size="small" sx={{ minWidth: 1560 }}>
         <Header />
         <TableBody>
           {rows.map((row) => (
@@ -161,7 +163,7 @@ function VirtualizedProductTable({ rows, onOpenProduct, onEditRow, onDeleteRow }
 
   return (
     <Box ref={scrollRef} sx={{ overflow: 'auto', maxHeight: VIRTUAL_VIEWPORT_HEIGHT }}>
-      <Table size="small" stickyHeader sx={{ minWidth: 1470 }}>
+      <Table size="small" stickyHeader sx={{ minWidth: 1560 }}>
         <Header />
         <TableBody>
           {paddingTop > 0 && (

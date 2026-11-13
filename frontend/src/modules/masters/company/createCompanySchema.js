@@ -51,6 +51,7 @@ export const createCompanySchema = z.object({
   registrationNo: z.string().trim().optional(),
   gstin: z.string().trim().min(1, 'GSTIN is required'),
   panNo: z.string().trim().optional(),
+  fssaiNo: z.string().trim().optional(),
   email: z.string().trim().optional()
     .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), 'Enter a valid email'),
   website: z.string().trim().optional(),
@@ -88,6 +89,7 @@ export const createCompanyDefaultValues = {
   registrationNo: '',
   gstin: '',
   panNo: '',
+  fssaiNo: '',
   email: '',
   website: '',
 
@@ -119,6 +121,7 @@ export function companyProfileToFormValues(profile) {
     registrationNo: profile.registrationNo || '',
     gstin: profile.gstin || '',
     panNo: profile.panNo || '',
+    fssaiNo: profile.fssaiNo || '',
     email: profile.email || '',
     website: profile.website || '',
 
@@ -153,6 +156,7 @@ export function companyFormValuesToPayload(values, logoName) {
     registrationNo: values.registrationNo?.trim() || undefined,
     gstin: values.gstin.trim(),
     panNo: values.panNo?.trim() || undefined,
+    fssaiNo: values.fssaiNo?.trim() || undefined,
     email: values.email?.trim() || undefined,
     website: values.website?.trim() || undefined,
 

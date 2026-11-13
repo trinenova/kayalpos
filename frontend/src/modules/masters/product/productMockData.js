@@ -20,6 +20,11 @@ export const PRODUCT_GROUP_OPTIONS = ['Grocery', 'Edible Oil', 'Dairy Products',
 export const PRODUCT_TYPE_OPTIONS = ['Finished Goods', 'Raw Material', 'Semi-Finished'];
 export const BRAND_OPTIONS = ['India Gate', 'Sunpure', 'Amul', 'Aashirvaad', 'Premium', 'Lux', 'Clinic Plus', 'Tata Tea', 'Parle', 'Coca Cola'];
 export const UOM_OPTIONS = ['PCS', 'KG', 'LTR', 'BOX'];
+export const PRODUCT_SUB_GROUP_OPTIONS = ['General', 'Premium', 'Economy', 'Combo Pack'];
+export const MANAGE_ITEM_BY_OPTIONS = ['None', 'Serial Numbers', 'Batches'];
+export const MANAGE_METHOD_OPTIONS = ['On Every Transaction', 'Single in Document', 'No Management'];
+export const SHIPPING_TYPE_OPTIONS = ['Standard', 'Express', 'Fragile', 'Cold Chain'];
+export const TAX_GROUP_OPTIONS = ['Taxable', 'Exempt', 'Zero Rated', 'Nil Rated'];
 
 export const PRODUCT_GROUP_COLORS = {
   Grocery: '#F5A623',

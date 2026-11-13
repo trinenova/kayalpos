@@ -1,9 +1,10 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
+  Dialog, DialogTitle, DialogContent, DialogActions,
   Stack, Typography, Button, Grid, TextField, CircularProgress,
+  Tabs, Tab, Checkbox, FormControlLabel, Divider,
 } from '@mui/material';
-import { FormProvider, useForm } from 'react-hook-form';
+import { FormProvider, useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import CloseIcon from '@mui/icons-material/Close';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
@@ -12,33 +13,37 @@ import { useAppDispatch } from '../../../../app/hooks';
 import { showToast } from '../../../../features/ui/uiSlice';
 import FormTextField from '../../../../components/form/FormTextField';
 import FormSelect from '../../../../components/form/FormSelect';
+import FormCheckbox from '../../../../components/form/FormCheckbox';
 import { useGetBrandsQuery } from '../../../../api/brandApi';
 import { useGetTaxCodesQuery } from '../../../../api/taxCodeApi';
+import { useGetUomsQuery } from '../../../../api/uomApi';
+import { useGetHsnSacCodesQuery } from '../../../../api/hsnSacApi';
+import { useGetSuppliersQuery } from '../../../../api/supplierApi';
 import { useCreateProductMutation, useUpdateProductMutation, useNextProductCode } from '../../../../api/productApi';
 import {
   createProductSchema, createProductDefaultValues, productToFormValues, productFormValuesToPayload,
-  PRODUCT_GROUP_SELECT_OPTIONS, PRODUCT_TYPE_SELECT_OPTIONS, UOM_SELECT_OPTIONS, STATUS_OPTIONS,
-  BRAND_PLACEHOLDER_OPTION, TAX_CODE_PLACEHOLDER_OPTION,
+  PRODUCT_GROUP_SELECT_OPTIONS, MANAGE_ITEM_BY_SELECT_OPTIONS, TAX_GROUP_SELECT_OPTIONS,
+  BRAND_PLACEHOLDER_OPTION, TAX_CODE_PLACEHOLDER_OPTION, HSN_PLACEHOLDER_OPTION,
+  SUPPLIER_PLACEHOLDER_OPTION, PURCHASING_UOM_PLACEHOLDER_OPTION, SALES_UOM_PLACEHOLDER_OPTION,
+  STATUS_OPTIONS,
 } from '../createProductSchema';
 
 /**
- * Add/Edit dialog for the Product master, backed by the real Product API
- * (see api/productApi.js). Same react-hook-form + zod shape as the
- * Outlet/Warehouse detail pages (FormTextField/FormSelect + inline
- * per-field errors) rather than the older hand-rolled useState + one-toast
- * validation this dialog used to have — every field here is checked
- * against the same rules as the backend's createProductSchema
- * (product.schema.js) before the request ever leaves the browser. The
- * Brand dropdown is backed by the real Brand master (useGetBrandsQuery)
- * instead of a static list, though Product.brand itself stays a plain
- * name string (not a foreign key) — this app's Brand master has no other
- * consumer that needs a hard relation yet, and free text also means an
- * older/bulk-imported brand name that isn't in the Brand master can still
- * be edited without being silently reset.
+ * Add/Edit dialog for the Product master, laid out to match the Create
+ * Product mockup: header fields (Item No/Description/Item Group/Unit
+ * Price + "Item Listed In") above a General/Purchase/Sales/Inventory tab
+ * strip. Foreign Name/UoM Group/Price List and the Sales/Purchase Item
+ * checkboxes, plus Barcode/Product Sub-Group/Product Type/Shipping Type/
+ * Manage Method on the General tab, stay in the schema (productToFormValues/
+ * productFormValuesToPayload) so existing rows keep round-tripping, but have
+ * no field on this screen per the latest mockup.
  */
+const TABS = ['General', 'Purchase', 'Sales', 'Inventory'];
+
 export default function ProductFormDialog({ open, mode = 'add', initialValues, onClose }) {
   const dispatch = useAppDispatch();
   const isEdit = mode === 'edit';
+  const [activeTab, setActiveTab] = useState('General');
 
   const [createProduct] = useCreateProductMutation();
   const [updateProduct] = useUpdateProductMutation();
@@ -46,6 +51,9 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
   // (real code already known) and while closed.
   const nextCode = useNextProductCode(open && !isEdit);
   const { data: brands = [] } = useGetBrandsQuery(open ? { status: 'ACTIVE' } : undefined, { skip: !open });
+  const { data: uoms = [] } = useGetUomsQuery(open ? { status: 'ACTIVE' } : undefined, { skip: !open });
+  const { data: hsnCodes = [] } = useGetHsnSacCodesQuery(open ? { status: 'ACTIVE' } : undefined, { skip: !open });
+  const { data: suppliers = [] } = useGetSuppliersQuery(open ? { status: 'ACTIVE' } : undefined, { skip: !open });
 
   const brandOptions = useMemo(() => {
     const options = [BRAND_PLACEHOLDER_OPTION, ...brands.map((b) => ({ value: b.name, label: b.name }))];
@@ -63,8 +71,9 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
 
   const taxCodeOptions = useMemo(() => {
     const options = [TAX_CODE_PLACEHOLDER_OPTION, ...taxCodes.map((t) => ({ value: t.name, label: t.name }))];
-    // Editing a product whose saved tax code isn't in the active Tax Code
-    // list (renamed/deactivated, or bulk-imported text) — keep it selectable.
+    // Editing a product whose saved tax code isn't in the active Tax
+    // Category list (renamed/deactivated, or bulk-imported text) — keep it
+    // selectable.
     const existingTaxCode = isEdit ? initialValues?.taxCode : '';
     if (existingTaxCode && !options.some((o) => o.value === existingTaxCode)) {
       options.push({ value: existingTaxCode, label: existingTaxCode });
@@ -72,15 +81,55 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
     return options;
   }, [taxCodes, isEdit, initialValues]);
 
+  // A product's base/purchasing/sales UOM are no longer scoped to a UoM
+  // Group on this screen (that field is hidden) — all three just list every
+  // active UOM, each with its own placeholder + "keep the existing value
+  // selectable even if it's no longer active" fallback.
+  const baseUomOptions = useMemo(() => {
+    const options = [{ value: '', label: 'Select UOM', disabled: true }, ...uoms.map((u) => ({ value: u.code, label: u.name }))];
+    const existing = isEdit ? initialValues?.uom : '';
+    if (existing && !options.some((o) => o.value === existing)) options.push({ value: existing, label: existing });
+    return options;
+  }, [uoms, isEdit, initialValues]);
+  const purchasingUomOptions = useMemo(() => {
+    const options = [PURCHASING_UOM_PLACEHOLDER_OPTION, ...uoms.map((u) => ({ value: u.code, label: u.name }))];
+    const existing = isEdit ? initialValues?.purchasingUom : '';
+    if (existing && !options.some((o) => o.value === existing)) options.push({ value: existing, label: existing });
+    return options;
+  }, [uoms, isEdit, initialValues]);
+  const salesUomOptions = useMemo(() => {
+    const options = [SALES_UOM_PLACEHOLDER_OPTION, ...uoms.map((u) => ({ value: u.code, label: u.name }))];
+    const existing = isEdit ? initialValues?.salesUom : '';
+    if (existing && !options.some((o) => o.value === existing)) options.push({ value: existing, label: existing });
+    return options;
+  }, [uoms, isEdit, initialValues]);
+
+  const hsnOptions = useMemo(() => {
+    const options = [HSN_PLACEHOLDER_OPTION, ...hsnCodes.map((h) => ({ value: h.code, label: `${h.code} — ${h.description}` }))];
+    const existing = isEdit ? initialValues?.hsnSac : '';
+    if (existing && !options.some((o) => o.value === existing)) options.push({ value: existing, label: existing });
+    return options;
+  }, [hsnCodes, isEdit, initialValues]);
+
+  const supplierOptions = useMemo(() => {
+    const options = [SUPPLIER_PLACEHOLDER_OPTION, ...suppliers.map((s) => ({ value: s.name, label: s.name }))];
+    const existing = isEdit ? initialValues?.preferredVendor : '';
+    if (existing && !options.some((o) => o.value === existing)) options.push({ value: existing, label: existing });
+    return options;
+  }, [suppliers, isEdit, initialValues]);
+
   const methods = useForm({
     resolver: zodResolver(createProductSchema),
     defaultValues: createProductDefaultValues,
     mode: 'onTouched',
   });
-  const { handleSubmit, reset, formState: { isSubmitting } } = methods;
+  const { handleSubmit, reset, control, formState: { isSubmitting } } = methods;
 
   useEffect(() => {
-    if (open) reset(isEdit && initialValues ? productToFormValues(initialValues) : createProductDefaultValues);
+    if (open) {
+      reset(isEdit && initialValues ? productToFormValues(initialValues) : createProductDefaultValues);
+      setActiveTab('General');
+    }
   }, [open, isEdit, initialValues, reset]);
 
   const onSubmit = handleSubmit(async (values) => {
@@ -100,13 +149,13 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
   });
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pr: 1.5 }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <Inventory2OutlinedIcon fontSize="small" sx={{ color: 'primary.main' }} />
-          <Typography sx={{ fontWeight: 800, fontSize: 17 }}>{isEdit ? 'Edit Product' : 'Add Product'}</Typography>
+          <Typography sx={{ fontWeight: 800, fontSize: 17 }}>{isEdit ? 'Edit Product' : 'Create Product'}</Typography>
         </Stack>
-        <IconButton size="small" onClick={onClose}><CloseIcon fontSize="small" /></IconButton>
+        <Button startIcon={<CloseIcon fontSize="small" />} color="inherit" onClick={onClose}>Close</Button>
       </DialogTitle>
       <FormProvider {...methods}>
         <form onSubmit={onSubmit} noValidate>
@@ -114,7 +163,7 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
-                  label="Product Code *"
+                  label="Product No *"
                   value={isEdit ? (initialValues?.code || '') : (nextCode || 'Auto generated')}
                   disabled
                   fullWidth
@@ -125,31 +174,120 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
                 <FormTextField name="name" label="Product Name *" placeholder="Enter product name" />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <FormSelect name="group" label="Product Group *" options={[{ value: '', label: 'Select Product Group', disabled: true }, ...PRODUCT_GROUP_SELECT_OPTIONS]} />
+                <FormSelect name="group" label="Item Group *" options={[{ value: '', label: 'Select Item Group', disabled: true }, ...PRODUCT_GROUP_SELECT_OPTIONS]} />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <FormSelect name="productType" label="Product Type" options={PRODUCT_TYPE_SELECT_OPTIONS} />
+                <FormTextField name="unitPrice" label="Unit Price" placeholder="0" />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <FormSelect name="brand" label="Brand" options={brandOptions} />
+                <Stack sx={{ height: '100%', justifyContent: 'center' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                    Item Listed In <Typography component="span" color="error">*</Typography>
+                  </Typography>
+                  <Stack direction="row" spacing={2}>
+                    <Controller
+                      name="isInventoryItem"
+                      control={control}
+                      render={({ field }) => (
+                        <FormControlLabel
+                          control={<Checkbox size="small" checked={Boolean(field.value)} onChange={(e) => field.onChange(e.target.checked)} />}
+                          label="Inventory Item"
+                        />
+                      )}
+                    />
+                  </Stack>
+                </Stack>
               </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormSelect name="uom" label="UOM *" options={[{ value: '', label: 'Select UOM', disabled: true }, ...UOM_SELECT_OPTIONS]} />
+            </Grid>
+
+            <Tabs
+              value={activeTab}
+              onChange={(e, v) => setActiveTab(v)}
+              sx={{ mt: 2, mb: 2, minHeight: 36, borderBottom: 1, borderColor: 'divider' }}
+            >
+              {TABS.map((t) => <Tab key={t} value={t} label={t} sx={{ minHeight: 36, textTransform: 'none' }} />)}
+            </Tabs>
+
+            {activeTab === 'General' && (
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormSelect name="uom" label="UOM *" options={baseUomOptions} />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormSelect name="brand" label="Brand & Manufacturer" options={brandOptions} />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormTextField name="additionalIdentifier" label="Additional Identifier" placeholder="additional_identifier" />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormTextField name="packSize" label="Pack Size" placeholder="e.g. 250g, 1kg, 1L" />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormSelect name="manageItemBy" label="Manage Item By *" options={MANAGE_ITEM_BY_SELECT_OPTIONS} />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormSelect name="hsnSac" label="HSN" options={hsnOptions} />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormSelect name="taxCode" label="Tax Code" options={taxCodeOptions} />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormSelect name="taxGroup" label="Tax Group" options={TAX_GROUP_SELECT_OPTIONS} />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormTextField name="remarks" label="Remarks" placeholder="Enter remarks" multiline minRows={2} />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Stack sx={{ height: '100%', justifyContent: 'center' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                      Item Category <Typography component="span" color="error">*</Typography>
+                    </Typography>
+                    <Stack direction="row" spacing={2}>
+                      <FormCheckbox name="isExcisable" label="Excisable" />
+                      <FormCheckbox name="isGst" label="GST" />
+                    </Stack>
+                  </Stack>
+                </Grid>
               </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormTextField name="hsnSac" label="HSN / SAC" placeholder="Enter HSN/SAC code" />
+            )}
+
+            {activeTab === 'Purchase' && (
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormSelect name="preferredVendor" label="Preferred Vendor" options={supplierOptions} />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormSelect name="purchasingUom" label="Purchasing UoM Name" options={purchasingUomOptions} />
+                </Grid>
               </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormSelect name="taxCode" label="Tax Code" options={taxCodeOptions} />
+            )}
+
+            {activeTab === 'Sales' && (
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormTextField name="salePrice" label="Sale Price (₹) *" placeholder="0.00" />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormTextField name="mrp" label="MRP (₹) *" placeholder="0.00" />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormSelect name="salesUom" label="Sales UoM Name" options={salesUomOptions} />
+                </Grid>
               </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormTextField name="salePrice" label="Sale Price (₹) *" placeholder="0.00" />
+            )}
+
+            {activeTab === 'Inventory' && (
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormTextField name="availableQty" label="Available Qty *" placeholder="0" numeric />
+                </Grid>
               </Grid>
+            )}
+
+            <Divider sx={{ my: 2 }} />
+            <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <FormTextField name="mrp" label="MRP (₹) *" placeholder="0.00" />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormTextField name="availableQty" label="Available Qty *" placeholder="0" numeric />
+                <FormTextField name="shortId" label="Short ID" placeholder="Enter short ID (unique)" />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormSelect name="status" label="Status *" options={STATUS_OPTIONS} />
@@ -157,14 +295,14 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
             </Grid>
           </DialogContent>
           <DialogActions sx={{ px: 3, py: 2 }}>
-            <Button variant="outlined" color="inherit" onClick={onClose}>Cancel</Button>
+            <Button variant="outlined" color="inherit" onClick={onClose}>Reset</Button>
             <Button
               type="submit"
               variant="contained"
               disabled={isSubmitting}
               startIcon={isSubmitting ? <CircularProgress size={14} /> : null}
             >
-              {isEdit ? 'Update' : 'Save'}
+              {isEdit ? 'Update' : 'Save Product'}
             </Button>
           </DialogActions>
         </form>

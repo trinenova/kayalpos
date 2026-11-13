@@ -255,6 +255,9 @@ export default function CompanyPage() {
                     </Grid>
 
                     <Grid size={{ xs: 12, sm: 6 }}>
+                      <FormTextField name="fssaiNo" label="FSSAI No." {...disabledProps} />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <FormTextField name="email" label="Email" {...disabledProps} />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>

@@ -35,6 +35,7 @@ export default function ProductViewDialog({ open, row, onClose, onEdit }) {
       <DialogContent dividers>
         <Grid container spacing={2}>
           <Field label="Product Code" value={row.code} />
+          <Field label="Short ID" value={row.shortId || '-'} />
           <Field label="Product Name" value={row.name} />
           <Field label="Product Group" value={row.group} />
           <Field label="Product Type" value={row.productType} />

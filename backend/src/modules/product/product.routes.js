@@ -2,6 +2,7 @@ import { prisma } from '../../config/prisma.js';
 import { createCrudRouter } from '../../utils/crudFactory.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { validateRequest } from '../../middleware/validateRequest.js';
+import { ApiError } from '../../middleware/errorHandler.js';
 import {
   createProductSchema, updateProductSchema, bulkProductRowSchema, bulkProductImportSchema,
 } from './product.schema.js';
@@ -10,7 +11,7 @@ const router = createCrudRouter({
   model: prisma.product,
   createSchema: createProductSchema,
   updateSchema: updateProductSchema,
-  searchFields: ['code', 'name'],
+  searchFields: ['code', 'shortId', 'name'],
   codePrefix: 'PROD',
   codeLength: 4,
 });
@@ -68,7 +69,7 @@ router.post('/bulk', requireAuth, validateRequest(bulkProductImportSchema), asyn
         await prisma.product.create({ data: { ...data, tenantId } });
         created += 1;
       } catch (err) {
-        errors.push({ row: i + 1, code: data.code, message: err?.code === 'P2002' ? 'Duplicate product code' : 'Failed to save row' });
+        errors.push({ row: i + 1, code: data.code, message: err?.code === 'P2002' ? 'Duplicate product code or Short ID' : 'Failed to save row' });
       }
     }
 
@@ -79,6 +80,17 @@ router.post('/bulk', requireAuth, validateRequest(bulkProductImportSchema), asyn
   } catch (err) {
     next(err);
   }
+});
+
+// Friendlier message when the unique (tenant, ShortId) constraint is what
+// failed — crudFactory's generic 409 can't say which field collided. Any
+// other error falls straight through to the app-level error handler.
+// eslint-disable-next-line no-unused-vars
+router.use((err, req, res, next) => {
+  if (err?.statusCode === 409 && /shortid/i.test(JSON.stringify(err.details ?? ''))) {
+    return next(new ApiError(409, 'That Short ID is already used by another product', err.details));
+  }
+  return next(err);
 });
 
 export default router;

@@ -12,6 +12,7 @@ export const companyProfileSchema = z.object({
   registrationNo: z.string().trim().optional(),
   gstin: z.string().trim().min(1, 'GSTIN is required'),
   panNo: z.string().trim().optional(),
+  fssaiNo: z.string().trim().optional(),
   email: z.string().trim().email('Enter a valid email').optional().or(z.literal('')),
   website: z.string().trim().optional(),
   companyType: z.string().trim().optional(),

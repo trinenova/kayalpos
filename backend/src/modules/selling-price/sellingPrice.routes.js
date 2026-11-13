@@ -3,9 +3,11 @@ import { requireAuth } from '../../middleware/auth.js';
 import { validateRequest } from '../../middleware/validateRequest.js';
 import {
   createSellingPriceSchema, updateSellingPriceSchema, sellingPriceQuerySchema,
+  priceGridQuerySchema, bulkUpdatePriceGridSchema,
 } from './sellingPrice.schema.js';
 import {
   listSellingPrices, getSellingPriceById, createSellingPrice, updateSellingPrice, deleteSellingPrice,
+  listPriceGrid, bulkUpdatePriceGrid, listPriceHistory,
 } from './sellingPrice.service.js';
 
 // Masters > Selling Price. Unlike most master-data modules (Brand, HSN/SAC,
@@ -23,6 +25,36 @@ router.get('/', validateRequest(sellingPriceQuerySchema, 'query'), async (req, r
   try {
     const { rows, meta } = await listSellingPrices(req.user.tenantId, req.query);
     res.json({ success: true, data: rows, meta });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Price List screen's flat grid — declared before '/:id' so "grid" is
+// never swallowed by that param route.
+router.get('/grid', validateRequest(priceGridQuerySchema, 'query'), async (req, res, next) => {
+  try {
+    const { rows, meta } = await listPriceGrid(req.user.tenantId, req.query);
+    res.json({ success: true, data: rows, meta });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/grid/bulk-update', validateRequest(bulkUpdatePriceGridSchema), async (req, res, next) => {
+  try {
+    const result = await bulkUpdatePriceGrid(req.user.tenantId, req.body.updates, req.user.name);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Actions column's "Price History" dialog — also declared before '/:id'.
+router.get('/grid/:productId/history', async (req, res, next) => {
+  try {
+    const rows = await listPriceHistory(req.user.tenantId, req.params.productId);
+    res.json({ success: true, data: rows });
   } catch (err) {
     next(err);
   }

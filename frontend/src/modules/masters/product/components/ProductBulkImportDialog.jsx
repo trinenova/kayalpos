@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 
 import { useAppDispatch } from '../../../../app/hooks';
 import { showToast } from '../../../../features/ui/uiSlice';
@@ -20,6 +21,8 @@ const CHUNK_SIZE = 200;
 const HEADER_MAP = {
   code: 'code',
   'product code': 'code',
+  shortid: 'shortId',
+  'short id': 'shortId',
   name: 'name',
   'product name': 'name',
   group: 'group',
@@ -65,6 +68,19 @@ function normalizeRow(rawRow) {
   });
   return row;
 }
+
+// Friendly column headers for the downloadable template — one canonical
+// spelling per field, taken straight from HEADER_MAP's keys above (plus a
+// one-row example) so a sheet filled in from this template round-trips
+// through normalizeRow without the user needing to guess column names.
+const TEMPLATE_HEADERS = [
+  'Product Code', 'Short ID', 'Product Name', 'Product Group', 'Product Type', 'Brand',
+  'UOM', 'HSN/SAC', 'Tax Code', 'Sale Price', 'MRP', 'Available Qty', 'Status',
+];
+const TEMPLATE_EXAMPLE_ROW = [
+  '', 'RICE5KG', 'India Gate Basmati Rice 5kg', 'Grocery', 'Finished Goods', 'India Gate',
+  'PCS', '10063010', 'GST 5%', 550, 600, 125, 'Active',
+];
 
 function chunkArray(items, size) {
   const chunks = [];
@@ -138,6 +154,18 @@ export default function ProductBulkImportDialog({ open, onClose }) {
     }
   };
 
+  // Blank workbook with just the expected column headers (plus one example
+  // row showing the expected value shapes) — lets the user start from a
+  // sheet that's guaranteed to match normalizeRow's HEADER_MAP instead of
+  // guessing column names from the help text above.
+  const handleDownloadTemplate = () => {
+    const sheet = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, TEMPLATE_EXAMPLE_ROW]);
+    sheet['!cols'] = TEMPLATE_HEADERS.map((h) => ({ wch: Math.max(h.length + 2, 12) }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Products');
+    XLSX.writeFile(workbook, 'Product_Import_Template.xlsx');
+  };
+
   const handleImport = async () => {
     if (!parsedRows?.length) return;
     setImporting(true);
@@ -191,26 +219,35 @@ export default function ProductBulkImportDialog({ open, onClose }) {
       <DialogContent dividers>
         <Stack spacing={2}>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Upload an .xlsx, .xls or .csv file with columns such as Name, Group, Product Type, Brand, UOM, HSN/SAC,
+            Upload an .xlsx, .xls or .csv file with columns such as Name, Short ID, Group, Product Type, Brand, UOM, HSN/SAC,
             Tax Code, Sale Price, MRP, Available Qty and Status. Rows with an existing Product Code
             update that product; rows without one are created as new products.
           </Typography>
 
-          <Button
-            variant="outlined"
-            component="label"
-            startIcon={<UploadFileOutlinedIcon fontSize="small" />}
-            disabled={importing}
-          >
-            {fileName || 'Choose file'}
-            <input
-              ref={fileInputRef}
-              type="file"
-              hidden
-              accept=".xlsx,.xls,.csv"
-              onChange={handleFileChange}
-            />
-          </Button>
+          <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={<UploadFileOutlinedIcon fontSize="small" />}
+              disabled={importing}
+            >
+              {fileName || 'Choose file'}
+              <input
+                ref={fileInputRef}
+                type="file"
+                hidden
+                accept=".xlsx,.xls,.csv"
+                onChange={handleFileChange}
+              />
+            </Button>
+            <Button
+              variant="text"
+              startIcon={<FileDownloadOutlinedIcon fontSize="small" />}
+              onClick={handleDownloadTemplate}
+            >
+              Download Template
+            </Button>
+          </Stack>
 
           {parseError && <Alert severity="error">{parseError}</Alert>}
 

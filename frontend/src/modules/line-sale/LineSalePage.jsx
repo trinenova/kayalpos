@@ -56,6 +56,8 @@ import PaymentActionsCard from "./components/PaymentActionsCard";
 import AmountPayableCard from "./components/AmountPayableCard";
 import HeldBillsDialog from "./components/HeldBillsDialog";
 import { PAYMENT_METHODS, WALK_IN_CUSTOMER, TAX_RATE } from "./lineSaleMockData";
+import { printReceipt } from "./receiptPrint";
+import { useCompanyProfileQuery } from "../../api/companyApi";
 
 // Quick-cash chips next to the "Exact" chip (which fills the bill total).
 const QUICK_AMOUNTS = [100, 500, 2000];
@@ -148,6 +150,9 @@ export default function LineSalePage() {
     isError: billNoError,
   } = useNextBillNoQuery();
   const [createSale, { isLoading: isPaying }] = useCreateSaleMutation();
+  // Header details (business name/address/GSTIN/phone) for the printed
+  // receipt — null when the tenant hasn't saved a Company profile yet.
+  const { data: companyProfile } = useCompanyProfileQuery();
 
   // Held ("parked") bills — saved carts, never sales (see modules/held-bill
   // on the backend). refetchOnMountOrArgChange re-reads the server list every
@@ -389,33 +394,41 @@ export default function LineSalePage() {
     });
   };
 
-  // Scan Barcode / Search Item bar on the billing step: exact product-code
-  // match first (what a barcode scan or a typed code gives), falling back
-  // to a name search that only acts when it narrows to exactly one product
-  // — several loose matches surface a toast instead of silently guessing.
-  const handleAddItemByQuery = (query) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return;
-    const byCode = products.find((p) => p.code.toLowerCase() === q);
-    if (byCode) {
-      handleAddItem(byCode.code);
+  // Swap one cart line's item for another (the line's own search cell). The
+  // quantity carries over, capped at the new item's stock; if the new item is
+  // already on another line the two lines are merged.
+  const handleReplaceItem = (oldCode, newCode) => {
+    if (oldCode === newCode) return;
+    const item = productByCode[newCode];
+    if (!item) return;
+    if (item.stock <= 0) {
+      dispatch(showToast(`${item.name} is out of stock`, "warning"));
       return;
     }
-    const nameMatches = products.filter((p) => p.name.toLowerCase().includes(q));
-    if (nameMatches.length === 1) {
-      handleAddItem(nameMatches[0].code);
-      return;
-    }
-    if (nameMatches.length > 1) {
-      dispatch(
-        showToast(
-          `${nameMatches.length} items match "${query}" — type the exact code or a more specific name`,
-          "info",
-        ),
+    setCart((prev) => {
+      const old = prev.find((line) => line.code === oldCode);
+      if (!old) return prev;
+      const dup = prev.find((line) => line.code === newCode);
+      if (dup) {
+        const merged = Math.min(dup.qty + old.qty, item.stock);
+        return prev
+          .filter((line) => line.code !== oldCode)
+          .map((line) => (line.code === newCode ? { ...line, qty: merged } : line));
+      }
+      return prev.map((line) =>
+        line.code === oldCode
+          ? {
+              id: item.id,
+              code: newCode,
+              qty: Math.min(old.qty, item.stock),
+              name: item.name,
+              uom: item.uom,
+              price: item.price,
+              taxRate: TAX_RATE,
+            }
+          : line,
       );
-      return;
-    }
-    dispatch(showToast(`No item found for "${query}"`, "warning"));
+    });
   };
 
   const handleQtyChange = (code, qty) => {
@@ -742,8 +755,26 @@ export default function LineSalePage() {
     setStep("payment");
   };
   const handleBackToBilling = () => setStep("billing");
-  const handlePrintInvoice = () =>
-    dispatch(showToast("Print Invoice is coming soon", "info"));
+  const handlePrintInvoice = () => {
+    if (cart.length === 0) {
+      dispatch(showToast("Add at least one item before printing", "warning"));
+      return;
+    }
+    const opened = printReceipt({
+      company: companyProfile,
+      billNo,
+      cashierName,
+      dateTime,
+      cart,
+      totals,
+      paymentMethod,
+      receivedAmount,
+      changeAmount,
+    });
+    if (!opened) {
+      dispatch(showToast("Allow pop-ups for this site to print the invoice", "warning"));
+    }
+  };
 
   return (
     <Stack
@@ -904,8 +935,6 @@ export default function LineSalePage() {
             customer={customer}
             onSelectCustomer={handleSelectCustomer}
             onAddCustomer={handleAddCustomer}
-            products={products}
-            onAddItemByQuery={handleAddItemByQuery}
           />
 
           <Grid container spacing={2} sx={{ alignItems: "stretch" }}>
@@ -915,6 +944,10 @@ export default function LineSalePage() {
                   lines={cart}
                   onQtyChange={handleQtyChange}
                   onRemove={handleRemove}
+                  products={products}
+                  onAddItem={handleAddItem}
+                  onReplaceItem={handleReplaceItem}
+                  onNotify={(message, severity) => dispatch(showToast(message, severity))}
                 />
               </Box>
             </Grid>

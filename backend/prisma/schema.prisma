@@ -73,6 +73,7 @@ model Tenant {
   hsnSacCodes         HsnSac[]
   sellingPrices       SellingPrice[]
   priceLists          PriceList[]
+  priceHistory        PriceHistory[]
   batchSerials        BatchSerial[]
   employees           Employee[]
   attachments         Attachment[]
@@ -436,16 +437,63 @@ model Product {
   tenantId     String       @map("TenantId")
   tenant       Tenant       @relation(fields: [tenantId], references: [id])
   code         String       @map("Code")
+  // Short, human-typable alias for the product (quick entry at the till /
+  // on forms). Optional, but unique per tenant when present — Postgres
+  // treats NULLs as distinct, so any number of products may leave it blank.
+  shortId      String?      @map("ShortId")
   name         String       @map("Name")
+  // Localized/alternate name shown on the Create Product screen's "Foreign
+  // Name" field — display-only, no other module reads it yet.
+  foreignName  String?      @map("ForeignName")
   group        String       @map("Group")
   // Free-text, not a hard enum — same "kept loose, list lives in the
   // frontend" reasoning as group/brand: the Product Type filter/field on
   // the Masters > Product page reads and writes this column.
   productType  String?      @map("ProductType")
+  // Create Product screen's "Product Sub-Group" field — free text, same
+  // "kept loose" convention as group/productType above.
+  productSubGroup String?   @map("ProductSubGroup")
   brand        String?      @map("Brand")
+  // Free text (e.g. "250g", "1kg", "1L") — the Price List grid's "Pack
+  // Size" column, same "kept loose" convention as group/productType above.
+  packSize     String?      @map("PackSize")
   uom          String       @map("Uom")
+  // Name of a UomGroup row (free text, not a hard FK — same convention as
+  // brand/uom above) — the Create Product screen's "UoM Group" dropdown.
+  uomGroup     String?      @map("UomGroup")
   hsnSac       String?      @map("HsnSac")
   taxCode      String?      @map("TaxCode")
+  // Create Product screen's "Tax Group" field — free text, no master table
+  // exists for this yet, same "kept loose" convention as productSubGroup.
+  taxGroup     String?      @map("TaxGroup")
+  // Name of a PriceList row (free text, same convention as uomGroup above).
+  priceList    String?      @map("PriceList")
+  // Name of a Supplier row (free text, same convention as brand/uomGroup
+  // above) — the Create Product screen's Purchase tab "Preferred Vendor".
+  preferredVendor String?   @map("PreferredVendor")
+  // Names of Uom rows (free text, same convention as uom/uomGroup above) —
+  // the Create Product screen's Purchase/Sales tab UoM overrides.
+  purchasingUom   String?   @map("PurchasingUom")
+  salesUom        String?   @map("SalesUom")
+  // Flat list price shown on the Create Product screen's "Unit Price"
+  // field, separate from the Sales-tab salePrice/mrp below.
+  unitPrice    Decimal      @default(0) @map("UnitPrice") @db.Decimal(12, 2)
+  // "Item Listed In" checkboxes on the Create Product screen — whether this
+  // product can appear on sales/purchase documents or counts toward stock.
+  isSalesItem     Boolean   @default(true) @map("IsSalesItem")
+  isPurchaseItem  Boolean   @default(true) @map("IsPurchaseItem")
+  isInventoryItem Boolean   @default(true) @map("IsInventoryItem")
+  barcode             String? @map("Barcode")
+  additionalIdentifier String? @map("AdditionalIdentifier")
+  shippingType        String? @map("ShippingType")
+  remarks             String? @map("Remarks")
+  // "None" by default (Create Product screen's "Manage Item By" dropdown —
+  // None / Serial Numbers / Batches).
+  manageItemBy String? @default("None") @map("ManageItemBy")
+  manageMethod String? @map("ManageMethod")
+  // "Item Category" checkboxes on the Create Product screen.
+  isExcisable Boolean @default(false) @map("IsExcisable")
+  isGst       Boolean @default(false) @map("IsGst")
   salePrice    Decimal      @default(0) @map("SalePrice") @db.Decimal(12, 2)
   mrp          Decimal      @default(0) @map("MRP") @db.Decimal(12, 2)
   availableQty Int          @default(0) @map("AvailableQty")
@@ -469,8 +517,10 @@ model Product {
   returnItems   SalesReturnItem[]
   sellingPrices SellingPrice[]
   batchSerials  BatchSerial[]
+  priceHistory  PriceHistory[]
 
   @@unique([tenantId, code])
+  @@unique([tenantId, shortId])
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
   // Search-by-name is the single most common query on this table (the
@@ -628,6 +678,11 @@ model SellingPrice {
   outlet   Outlet? @relation(fields: [outletId], references: [id], onDelete: SetNull)
 
   mrp          Decimal @map("MRP") @db.Decimal(12, 2)
+  // Snapshot of `mrp` just before the Price List grid's "Update Price"/
+  // "Bulk Update" last changed it — null until the first such change, so
+  // the grid's "Previous Price" column can show real history without a
+  // separate audit table.
+  previousPrice Decimal? @map("PreviousPrice") @db.Decimal(12, 2)
   purchaseCost Decimal @default(0) @map("PurchaseCost") @db.Decimal(12, 2)
 
   taxCode String? @map("TaxCode")
@@ -668,6 +723,28 @@ model SellingPrice {
   @@index([tenantId, status])
   @@index([tenantId, productId])
   @@index([outletId])
+}
+
+// One row per price change made from the Price List grid's "Update Price"/
+// "Bulk Update" — the Actions column's "Price History" dialog lists these,
+// newest first. Kept as its own append-only log (never updated/deleted)
+// rather than reconstructing history from SellingPrice.previousPrice alone,
+// since that field only ever remembers ONE step back.
+model PriceHistory {
+  id       String @id @default(cuid()) @map("Id")
+  tenantId String @map("TenantId")
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  productId String  @map("ProductId")
+  product   Product @relation(fields: [productId], references: [id])
+
+  previousPrice Decimal  @map("PreviousPrice") @db.Decimal(12, 2)
+  newPrice      Decimal  @map("NewPrice") @db.Decimal(12, 2)
+  remarks       String?  @map("Remarks")
+  changedBy     String?  @map("ChangedBy")
+  changedAt     DateTime @default(now()) @map("ChangedAt")
+
+  @@index([tenantId, productId, changedAt])
 }
 
 // Customer master. `loyaltyPoints` is a plain counter for now (no Loyalty
@@ -1808,6 +1885,7 @@ model StockReceiptItem {
   itemCode    String       @map("ItemCode")
   itemName    String       @map("ItemName")
   hsnCode     String?      @map("HsnCode")
+  barcode     String?      @map("Barcode")
   uom         String?      @map("Uom")
   orderedQty  Decimal      @default(0) @map("OrderedQty") @db.Decimal(12, 2)
   receivedQty Decimal      @map("ReceivedQty") @db.Decimal(12, 2)
@@ -2388,6 +2466,9 @@ model Company {
   registrationNo     String? @map("RegistrationNo")
   gstin              String  @map("GSTIN")
   panNo              String? @map("PANNo")
+  // FSSAI license number — shown on printed sales receipts alongside GSTIN
+  // for food-business tenants (see the Line Sale receipt header).
+  fssaiNo            String? @map("FssaiNo")
   email              String? @map("Email")
   website            String? @map("Website")
   companyType        String? @map("CompanyType")

@@ -1,0 +1,17 @@
+-- AlterTable
+ALTER TABLE "Product" ADD COLUMN     "AdditionalIdentifier" TEXT,
+ADD COLUMN     "Barcode" TEXT,
+ADD COLUMN     "ForeignName" TEXT,
+ADD COLUMN     "IsExcisable" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "IsGst" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "IsInventoryItem" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "IsPurchaseItem" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "IsSalesItem" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "ManageItemBy" TEXT DEFAULT 'None',
+ADD COLUMN     "ManageMethod" TEXT,
+ADD COLUMN     "PriceList" TEXT,
+ADD COLUMN     "ProductSubGroup" TEXT,
+ADD COLUMN     "Remarks" TEXT,
+ADD COLUMN     "ShippingType" TEXT,
+ADD COLUMN     "UnitPrice" DECIMAL(12,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "UomGroup" TEXT;

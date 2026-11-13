@@ -56,6 +56,26 @@ const sellingPriceBaseSchema = z.object({
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
 });
 
+// Query params for GET /masters/selling-price/grid — the Price List
+// screen's flat "every product, with its current price" view.
+export const priceGridQuerySchema = z.object({
+  search: z.string().trim().optional(),
+  page: z.coerce.number().int('Page must be a whole number').positive('Page must be at least 1').default(1),
+  pageSize: z.coerce.number().int('Page size must be a whole number').positive('Page size must be at least 1')
+    .max(500, 'Page size cannot exceed 500').default(100),
+});
+
+// Body for POST /masters/selling-price/grid/bulk-update — one row per
+// product the user typed a new "Update Price" value for on the Price List
+// screen's grid.
+export const bulkUpdatePriceGridSchema = z.object({
+  updates: z.array(z.object({
+    productId: z.string().trim().min(1, 'Item is required'),
+    price: z.coerce.number({ invalid_type_error: 'Enter a valid price' }).nonnegative('Price cannot be negative'),
+    remarks: z.string().trim().max(250, 'Remarks cannot exceed 250 characters').optional().or(z.literal('')),
+  })).min(1, 'No price changes to save'),
+});
+
 function withCrossFieldChecks(schema) {
   return schema.superRefine((data, ctx) => {
     if (data.pricingMethod === 'FIXED' && (data.fixedSellingPrice === undefined || data.fixedSellingPrice === null)) {

@@ -37,13 +37,35 @@ function toViewRow(row) {
   return {
     id: row.id,
     code: row.code,
+    shortId: row.shortId || '',
     name: row.name,
+    foreignName: row.foreignName || '',
     group: row.group,
     productType: row.productType || '',
+    productSubGroup: row.productSubGroup || '',
     brand: row.brand || '',
+    packSize: row.packSize || '',
     uom: row.uom,
+    uomGroup: row.uomGroup || '',
     hsnSac: row.hsnSac || '',
     taxCode: row.taxCode || '',
+    taxGroup: row.taxGroup || '',
+    priceList: row.priceList || '',
+    preferredVendor: row.preferredVendor || '',
+    purchasingUom: row.purchasingUom || '',
+    salesUom: row.salesUom || '',
+    unitPrice: Number(row.unitPrice) || 0,
+    isSalesItem: row.isSalesItem ?? true,
+    isPurchaseItem: row.isPurchaseItem ?? true,
+    isInventoryItem: row.isInventoryItem ?? true,
+    barcode: row.barcode || '',
+    additionalIdentifier: row.additionalIdentifier || '',
+    shippingType: row.shippingType || '',
+    remarks: row.remarks || '',
+    manageItemBy: row.manageItemBy || 'None',
+    manageMethod: row.manageMethod || '',
+    isExcisable: row.isExcisable ?? false,
+    isGst: row.isGst ?? false,
     salePrice: Number(row.salePrice) || 0,
     mrp: Number(row.mrp) || 0,
     availableQty: row.availableQty,
@@ -223,7 +245,7 @@ export default function ProductPage() {
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <TextField
               label="Search Product"
-              placeholder="Search by product code, name or barcode..."
+              placeholder="Search by product code, short ID, name or barcode..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}

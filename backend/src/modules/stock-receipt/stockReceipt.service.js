@@ -73,6 +73,7 @@ function computeItems(items) {
       itemCode: item.itemCode,
       itemName: item.itemName,
       hsnCode: item.hsnCode || null,
+      barcode: item.barcode || null,
       uom: item.uom || null,
       orderedQty,
       receivedQty,

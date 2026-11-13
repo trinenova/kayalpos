@@ -223,6 +223,179 @@ export async function updateSellingPrice(tenantId, id, data) {
   }).catch((err) => { throw prismaKnownError(err); });
 }
 
+// The Price List screen's one "live" row per product — no outlet scoping,
+// always in this fixed `priceList` bucket, kept distinct from any real
+// named price lists the Selling Price master may also hold for the same
+// product (see the Prisma model's @@unique([tenantId, productId, priceList,
+// outletId]), which is exactly why this fixed priceList/outletId combo
+// never collides with those).
+const GRID_PRICE_LIST = 'Default';
+
+/**
+ * Powers the Price List screen's flat "every product, with its current
+ * price" grid. Every ACTIVE product gets a row even if it has no Selling
+ * Price record yet — `currentPrice` falls back to the product's own `mrp`
+ * and `previousPrice`/the effective dates are null/the product's createdAt,
+ * so the grid is never missing products just because nobody has used
+ * "Update Price" on them yet.
+ */
+export async function listPriceGrid(tenantId, query = {}) {
+  const { search, page = 1, pageSize = 100 } = query;
+
+  const where = { tenantId, status: 'ACTIVE' };
+  if (search) {
+    where.OR = [
+      { code: { contains: search, mode: 'insensitive' } },
+      { name: { contains: search, mode: 'insensitive' } },
+      { group: { contains: search, mode: 'insensitive' } },
+      { packSize: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
+  const size = Math.min(500, Math.max(1, Number.parseInt(pageSize, 10) || 100));
+
+  const [products, total] = await Promise.all([
+    prisma.product.findMany({
+      where,
+      orderBy: { code: 'desc' },
+      skip: (pageNum - 1) * size,
+      take: size,
+      select: {
+        id: true, code: true, name: true, group: true, uom: true, packSize: true, mrp: true, createdAt: true,
+      },
+    }),
+    prisma.product.count({ where }),
+  ]);
+
+  const productIds = products.map((p) => p.id);
+  const gridRows = productIds.length
+    ? await prisma.sellingPrice.findMany({
+      where: {
+        tenantId, priceList: GRID_PRICE_LIST, outletId: null, productId: { in: productIds },
+      },
+    })
+    : [];
+  const gridRowByProductId = new Map(gridRows.map((row) => [row.productId, row]));
+
+  const rows = products.map((product) => {
+    const gridRow = gridRowByProductId.get(product.id);
+    return {
+      productId: product.id,
+      code: product.code,
+      name: product.name,
+      category: product.group,
+      uom: product.uom,
+      packSize: product.packSize,
+      previousPrice: gridRow ? gridRow.previousPrice : null,
+      currentPrice: gridRow ? gridRow.mrp : product.mrp,
+      effectiveFrom: gridRow ? gridRow.effectiveFrom : product.createdAt,
+      effectiveTo: gridRow ? gridRow.effectiveTo : null,
+      priceUpdateReason: gridRow ? gridRow.priceUpdateReason : null,
+    };
+  });
+
+  return {
+    rows,
+    meta: { page: pageNum, pageSize: size, total, totalPages: Math.max(1, Math.ceil(total / size)) },
+  };
+}
+
+/**
+ * Applies every "Update Price" row from the Price List grid in one
+ * transaction — each product's grid row is upserted (created the first
+ * time its price is ever changed here, updated every time after), snapshots
+ * the prior price into `previousPrice`, and resets `effectiveFrom` to now
+ * ("Ongoing" until the next change, same as the reference design's
+ * Effective To column staying blank).
+ */
+export async function bulkUpdatePriceGrid(tenantId, updates, changedBy) {
+  const productIds = updates.map((u) => u.productId);
+  const products = await prisma.product.findMany({ where: { id: { in: productIds }, tenantId }, select: { id: true, mrp: true } });
+  const productById = new Map(products.map((p) => [p.id, p]));
+
+  const missing = productIds.filter((id) => !productById.has(id));
+  if (missing.length) throw new ApiError(404, `${missing.length} item(s) in this update no longer exist`);
+
+  const existingRows = await prisma.sellingPrice.findMany({
+    where: {
+      tenantId, priceList: GRID_PRICE_LIST, outletId: null, productId: { in: productIds },
+    },
+  });
+  const existingByProductId = new Map(existingRows.map((row) => [row.productId, row]));
+
+  const now = new Date();
+  // Each update becomes two writes in the same transaction: the grid row
+  // itself (upserted) and an append-only PriceHistory entry — the Actions
+  // column's "Price History" dialog reads only the latter, since
+  // SellingPrice.previousPrice can only ever remember one step back.
+  const writes = updates.flatMap((update) => {
+    const existing = existingByProductId.get(update.productId);
+    const previousPrice = existing ? existing.mrp : productById.get(update.productId).mrp;
+    const newPrice = round2(update.price);
+
+    const gridWrite = existing
+      ? prisma.sellingPrice.update({
+        where: { id: existing.id },
+        data: {
+          mrp: newPrice,
+          previousPrice,
+          sellingPriceExclTax: newPrice,
+          sellingPriceInclTax: newPrice,
+          effectiveFrom: now,
+          effectiveTo: null,
+          priceUpdateReason: update.remarks || null,
+        },
+      })
+      : prisma.sellingPrice.create({
+        data: {
+          tenantId,
+          productId: update.productId,
+          priceList: GRID_PRICE_LIST,
+          outletId: null,
+          mrp: newPrice,
+          previousPrice,
+          pricingMethod: 'FIXED',
+          marginPercent: 0,
+          sellingPriceExclTax: newPrice,
+          sellingPriceInclTax: newPrice,
+          effectiveFrom: now,
+          priceUpdateReason: update.remarks || null,
+          status: 'ACTIVE',
+        },
+      });
+
+    const historyWrite = prisma.priceHistory.create({
+      data: {
+        tenantId,
+        productId: update.productId,
+        previousPrice,
+        newPrice,
+        remarks: update.remarks || null,
+        changedBy: changedBy || null,
+      },
+    });
+
+    return [gridWrite, historyWrite];
+  });
+
+  const results = await prisma.$transaction(writes);
+  return { updated: results.length / 2 };
+}
+
+/**
+ * Powers the Price List grid's Actions column — newest change first, so the
+ * dialog reads top-to-bottom as "most recent first", matching the reference
+ * design.
+ */
+export async function listPriceHistory(tenantId, productId) {
+  await requireProduct(tenantId, productId);
+  return prisma.priceHistory.findMany({
+    where: { tenantId, productId },
+    orderBy: { changedAt: 'desc' },
+  });
+}
+
 export async function deleteSellingPrice(tenantId, id) {
   const existing = await prisma.sellingPrice.findFirst({ where: { id, tenantId } });
   if (!existing) throw new ApiError(404, 'Selling price not found');

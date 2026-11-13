@@ -1,5 +1,6 @@
+import { useMemo } from 'react';
 import {
-  Paper, Stack, Box, Typography, Chip, IconButton, Avatar,
+  Paper, Stack, Box, Typography, Chip, IconButton,
 } from '@mui/material';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutlineOutlined';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutlineOutlined';
@@ -7,54 +8,81 @@ import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined
 
 import DataTable from '../../../components/common/DataTable';
 import { formatCurrency } from '../../../utils/format';
-import { colorForCode, initialsForCode } from '../lineSaleMockData';
+import ItemSearchCell, { BarcodeCell, useItemSearchIndex } from './ItemSearchCell';
+
+// Sentinel row appended after the last real line — it is the "new item" row.
+const BLANK_KEY = '__new__';
+const BLANK_ROW = { code: BLANK_KEY, blank: true };
 
 /**
- * "Current Sale" panel — the cart itself, styled after the reference design:
- * a two-letter colored badge per line (from the product code), a +/- qty
- * stepper instead of a bare number field, and Price / Total columns. Replaces
- * the old split ItemsPanel (browsable catalog) + CartPanel layout on the
- * billing step; items are now added via the search bar above instead of a
- * separate catalog list.
+ * "Current Sale" table — an entry grid. Every row has its own item
+ * search/select cell (Product master + Barcode & Label, tagged by source):
+ *
+ *   - the last row is always a blank entry row; picking an item there fills
+ *     it and the table automatically opens the next blank row below, so
+ *     items are entered one row at a time without any separate search box;
+ *   - an already-filled row can be searched again to swap that line's item.
+ *
+ * Price / QTY (+/- stepper) / Total sit in the same row as the item.
  */
-export default function CurrentSaleTable({ lines, onQtyChange, onRemove }) {
+export default function CurrentSaleTable({
+  lines, onQtyChange, onRemove, products, onAddItem, onReplaceItem, onNotify,
+}) {
+  const index = useItemSearchIndex(products);
+
+  const rows = useMemo(() => [...lines, BLANK_ROW], [lines]);
+
+  // Picking/scanning in either the Item or the Barcode cell: the blank row
+  // adds a new line (and the table opens the next blank row), a filled row
+  // swaps that line's item.
+  const selectForRow = (row) => (code) => (
+    row.blank ? onAddItem(code) : onReplaceItem(row.code, code)
+  );
+
   const columns = [
-    { key: 'index', label: '#', width: '6%', render: (_row, i) => i + 1 },
+    { key: 'index', label: '#', width: '5%', render: (_row, i) => i + 1 },
+    // Barcode is the first field of every row, so a scanner can feed the
+    // table straight away; Tab then moves on to Item Name.
+    {
+      key: 'barcode',
+      label: 'Barcode',
+      width: '17%',
+      render: (row) => (
+        <BarcodeCell
+          index={index}
+          line={row.blank ? null : row}
+          onNotify={onNotify}
+          autoFocus={row.blank && lines.length === 0}
+          onSelect={selectForRow(row)}
+        />
+      ),
+    },
     {
       key: 'item',
       label: 'Item Name',
-      width: '34%',
-      wrap: true,
+      width: '33%',
       render: (row) => (
-        <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', minWidth: 0 }}>
-          <Avatar
-            variant="rounded"
-            sx={{
-              bgcolor: colorForCode(row.code), color: '#fff', width: 30, height: 30,
-              fontSize: 12, fontWeight: 700, flexShrink: 0,
-            }}
-          >
-            {initialsForCode(row.code, row.name)}
-          </Avatar>
-          <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-            {row.name}
-          </Typography>
-        </Stack>
+        <ItemSearchCell
+          index={index}
+          line={row.blank ? null : row}
+          onNotify={onNotify}
+          onSelect={selectForRow(row)}
+        />
       ),
     },
     {
       key: 'price',
       label: 'Price',
-      width: '18%',
-      render: (row) => (
+      width: '12%',
+      render: (row) => (row.blank ? null : (
         <Typography variant="body2">{formatCurrency(row.price, { decimals: true })}</Typography>
-      ),
+      )),
     },
     {
       key: 'qty',
       label: 'QTY',
-      width: '26%',
-      render: (row) => (
+      width: '19%',
+      render: (row) => (row.blank ? null : (
         <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
           <IconButton size="small" onClick={() => onQtyChange(row.code, row.qty - 1)} disabled={row.qty <= 1}>
             <RemoveCircleOutlineIcon fontSize="small" />
@@ -66,14 +94,14 @@ export default function CurrentSaleTable({ lines, onQtyChange, onRemove }) {
             <AddCircleOutlineIcon fontSize="small" sx={{ color: 'primary.main' }} />
           </IconButton>
         </Stack>
-      ),
+      )),
     },
     {
       key: 'total',
       label: 'Total',
       align: 'right',
-      width: '16%',
-      render: (row) => (
+      width: '14%',
+      render: (row) => (row.blank ? null : (
         <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', justifyContent: 'flex-end' }}>
           <Typography variant="body2" sx={{ fontWeight: 700 }}>
             {formatCurrency(row.qty * row.price, { decimals: true })}
@@ -82,7 +110,7 @@ export default function CurrentSaleTable({ lines, onQtyChange, onRemove }) {
             <DeleteOutlineOutlinedIcon fontSize="small" />
           </IconButton>
         </Stack>
-      ),
+      )),
     },
   ];
 
@@ -96,9 +124,8 @@ export default function CurrentSaleTable({ lines, onQtyChange, onRemove }) {
       <Box sx={{ px: 2.5, pb: 2.5, flex: 1, minWidth: 0, overflowY: 'auto', overflowX: 'hidden' }}>
         <DataTable
           columns={columns}
-          rows={lines}
+          rows={rows}
           getRowKey={(r) => r.code}
-          emptyMessage="Scan a barcode or search an item above to start the sale"
           fitContainer
         />
       </Box>

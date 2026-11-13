@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   Box, Table, TableHead, TableBody, TableRow, TableCell, TextField, MenuItem,
   IconButton, Stack, Button,
@@ -8,6 +9,7 @@ import AddIcon from '@mui/icons-material/Add';
 
 import FormDatePicker from '../../../components/form/FormDatePicker';
 import ItemCodeAutocomplete from '../../../components/form/ItemCodeAutocomplete';
+import { useGetBarcodeLabelBatchesQuery } from '../../../api/barcodeLabelApi';
 import { UOM_OPTIONS, WAREHOUSE_OPTIONS, emptyItemRow } from '../createStockReceiptSchema';
 
 // Only autofill the UoM select when the picked product's own uom matches one
@@ -17,6 +19,7 @@ function matchUom(value) {
 }
 
 const COLUMNS = [
+  { key: 'barcode', label: 'Barcode', minWidth: 150 },
   { key: 'itemCode', label: 'Item Code', minWidth: 150 },
   { key: 'itemName', label: 'Item Name', minWidth: 150 },
   { key: 'hsnCode', label: 'HSN Code', minWidth: 110 },
@@ -59,10 +62,26 @@ export default function ReceiptItemsTable({ onAddItem, products = [] }) {
   const { control } = useFormContext();
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
+  // itemCode -> barcode, taken from the Barcode & Label rows, so picking an
+  // item pre-fills its Barcode cell (still editable afterwards).
+  const { data: labelBatches = [] } = useGetBarcodeLabelBatchesQuery();
+  const { barcodeByCode, codeByBarcode } = useMemo(() => {
+    const byCode = {};
+    const byBarcode = {};
+    labelBatches.forEach((batch) => {
+      (batch.items || []).forEach((item) => {
+        if (!item.barcode) return;
+        if (!byCode[item.itemCode]) byCode[item.itemCode] = item.barcode;
+        if (!byBarcode[item.barcode]) byBarcode[item.barcode] = item.itemCode;
+      });
+    });
+    return { barcodeByCode: byCode, codeByBarcode: byBarcode };
+  }, [labelBatches]);
+
   return (
     <Stack spacing={1.5}>
       <Box sx={{ overflowX: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-        <Table size="small" sx={{ minWidth: 1500 }}>
+        <Table size="small" sx={{ minWidth: 1650 }}>
           <TableHead>
             <TableRow sx={{ '& th': { fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap', bgcolor: 'rgba(0,0,0,0.02)' } }}>
               <TableCell sx={{ width: 44 }}>#</TableCell>
@@ -74,7 +93,7 @@ export default function ReceiptItemsTable({ onAddItem, products = [] }) {
           </TableHead>
           <TableBody>
             {fields.map((field, index) => (
-              <ItemRow key={field.id} index={index} control={control} onRemove={() => remove(index)} removable={fields.length > 1} products={products} />
+              <ItemRow key={field.id} index={index} control={control} onRemove={() => remove(index)} removable={fields.length > 1} products={products} barcodeByCode={barcodeByCode} codeByBarcode={codeByBarcode} />
             ))}
           </TableBody>
         </Table>
@@ -105,25 +124,59 @@ export default function ReceiptItemsTable({ onAddItem, products = [] }) {
 }
 
 function ItemRow({
-  index, control, onRemove, removable, products,
+  index, control, onRemove, removable, products, barcodeByCode, codeByBarcode,
 }) {
   const { setValue } = useFormContext();
   const row = useWatch({ control, name: `items.${index}` });
   const totalCost = computeLineTotal(row);
 
+  const fillFromProduct = (product, { barcode } = {}) => {
+    setValue(`items.${index}.itemCode`, product.code, { shouldDirty: true, shouldValidate: true });
+    setValue(`items.${index}.itemName`, product.name, { shouldDirty: true });
+    setValue(`items.${index}.hsnCode`, product.hsnSac || '', { shouldDirty: true });
+    setValue(`items.${index}.barcode`, barcode ?? (barcodeByCode[product.code] || ''), { shouldDirty: true });
+    setValue(`items.${index}.uom`, matchUom(product.uom), { shouldDirty: true });
+  };
+
+  // Barcode is the first field of the row: a scanned/typed barcode that
+  // exists in Barcode & Label fills the item details (Enter, Tab or leaving
+  // the field). An unknown barcode is kept as typed.
+  const lookupBarcode = (value) => {
+    const code = codeByBarcode[String(value || '').trim()];
+    const product = code ? products.find((p) => p.code === code) : null;
+    if (product && row?.itemCode !== product.code) fillFromProduct(product, { barcode: String(value).trim() });
+  };
+
   return (
     <TableRow sx={{ '& td': { py: 0.75 } }}>
       <TableCell sx={{ color: 'text.secondary' }}>{index + 1}</TableCell>
+      <TableCell>
+        <Controller
+          name={`items.${index}.barcode`}
+          control={control}
+          render={({ field }) => (
+            <TextField
+              {...field}
+              size="small"
+              fullWidth
+              placeholder="Scan / Enter Barcode"
+              onBlur={(e) => { field.onBlur(); lookupBarcode(e.target.value); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  lookupBarcode(e.target.value);
+                }
+              }}
+            />
+          )}
+        />
+      </TableCell>
       <TableCell>
         <ItemCodeAutocomplete
           control={control}
           name={`items.${index}.itemCode`}
           products={products}
-          onSelectProduct={(product) => {
-            setValue(`items.${index}.itemName`, product.name, { shouldDirty: true });
-            setValue(`items.${index}.hsnCode`, product.hsnSac || '', { shouldDirty: true });
-            setValue(`items.${index}.uom`, matchUom(product.uom), { shouldDirty: true });
-          }}
+          onSelectProduct={(product) => fillFromProduct(product)}
         />
       </TableCell>
       <TableCell>
