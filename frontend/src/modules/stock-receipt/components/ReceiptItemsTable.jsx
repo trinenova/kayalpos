@@ -6,6 +6,7 @@ import {
 import { Controller, useFormContext, useFieldArray, useWatch, useFormState } from 'react-hook-form';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import AddIcon from '@mui/icons-material/Add';
+import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 
@@ -15,6 +16,7 @@ import ItemSearchCell, { useItemSearchIndex } from '../../line-sale/components/I
 
 import FormDatePicker, { formatPickerDate } from '../../../components/form/FormDatePicker';
 import { readFirstSheet } from '../../../utils/excel';
+import SmartAddDialog from './SmartAddDialog';
 import { downloadReceiptItemsTemplate, parseReceiptItemRows } from '../receiptItemsExcel';
 import ItemCodeAutocomplete from '../../../components/form/ItemCodeAutocomplete';
 import { useGetBarcodeLabelBatchesQuery } from '../../../api/barcodeLabelApi';
@@ -77,6 +79,7 @@ export default function ReceiptItemsTable({ onAddItem, products = [] }) {
   const dispatch = useAppDispatch();
   const fileInputRef = useRef(null);
   const [importIssues, setImportIssues] = useState([]);
+  const [smartAddOpen, setSmartAddOpen] = useState(false);
   const { isDirty } = useFormState({ control });
   // Same Product master + Barcode & Label + Receipt search index the Line Sale
   // Item Name field uses, built once for the whole grid.
@@ -159,11 +162,31 @@ export default function ReceiptItemsTable({ onAddItem, products = [] }) {
     }
   };
 
+  // Smart Add: every picked product becomes a row (qty 1 to start with),
+  // placed after the rows already filled in, ending on a blank row.
+  const handleSmartAdd = (chosen) => {
+    const kept = (items || []).filter((r) => !isBlankItemRow(r));
+    const added = chosen.map((product) => ({
+      ...emptyItemRow({ orderedQty: '1.00', receivedQty: '1.00' }),
+      itemCode: product.code,
+      itemName: product.name || '',
+      hsnCode: product.hsnSac || '',
+      barcode: barcodeByCode[product.code] || '',
+      uom: matchUom(product.uom),
+    }));
+    replace([...kept, ...added, emptyItemRow()]);
+    dispatch(showToast(`${added.length} item${added.length === 1 ? '' : 's'} added`, 'success'));
+  };
+  const existingCodes = new Set((items || []).filter((r) => !isBlankItemRow(r)).map((r) => r.itemCode));
+
   return (
     <Stack spacing={1.5}>
       <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Items</Typography>
         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+          <Button variant="contained" color="warning" size="small" startIcon={<AutoAwesomeOutlinedIcon fontSize="small" />} onClick={() => setSmartAddOpen(true)}>
+            Smart Add
+          </Button>
           <Button variant="outlined" color="inherit" size="small" startIcon={<FileDownloadOutlinedIcon fontSize="small" />} onClick={downloadReceiptItemsTemplate}>
             Download Template
           </Button>
@@ -173,6 +196,7 @@ export default function ReceiptItemsTable({ onAddItem, products = [] }) {
           <input ref={fileInputRef} type="file" hidden accept=".xlsx,.xls,.csv" onChange={handleImportFile} />
         </Stack>
       </Stack>
+      <SmartAddDialog open={smartAddOpen} onClose={() => setSmartAddOpen(false)} products={products} existingCodes={existingCodes} onAdd={handleSmartAdd} />
       {importIssues.length > 0 && (
         <Alert severity="warning" onClose={() => setImportIssues([])}>
           {importIssues.length} row{importIssues.length === 1 ? '' : 's'} skipped:

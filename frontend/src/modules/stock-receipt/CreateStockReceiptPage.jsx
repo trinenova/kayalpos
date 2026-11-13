@@ -201,17 +201,17 @@ export default function CreateStockReceiptPage({ id: propId, onBack }) {
           <Button variant="outlined" color="inherit" startIcon={<PrintOutlinedIcon fontSize="small" />} onClick={handlePrintPreview}>
             Print / Preview
           </Button>
-          <Button
+          {/* <Button
             variant="outlined"
             color="inherit"
             endIcon={<ExpandMoreIcon />}
             onClick={(e) => setMoreActionsAnchor(e.currentTarget)}
           >
             More Actions
-          </Button>
+          </Button> */}
           <Menu anchorEl={moreActionsAnchor} open={Boolean(moreActionsAnchor)} onClose={() => setMoreActionsAnchor(null)}>
             <MenuItem onClick={() => handleMoreAction('Save as Template')}>Save as Template</MenuItem>
-                        <MenuItem onClick={() => reset(createStockReceiptDefaultValues)}>Reset Form</MenuItem>
+            <MenuItem onClick={() => reset(createStockReceiptDefaultValues)}>Reset Form</MenuItem>
           </Menu>
           {isEditMode ? (
             <Button variant="contained" color="warning" startIcon={<SaveOutlinedIcon fontSize="small" />} onClick={onSaveAsDraft} disabled={isSaving}>
@@ -263,7 +263,7 @@ export default function CreateStockReceiptPage({ id: propId, onBack }) {
 
           <Paper variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, sm: 2.5 } }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>Supplier / Source Details</Typography>
-          <Grid container spacing={2}>
+            <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -292,7 +292,7 @@ export default function CreateStockReceiptPage({ id: propId, onBack }) {
                   </IconButton>
                 </Stack>
               </Grid>
-              <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              {/* <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <FormSelect name="costCenter" label="Cost Center" options={COST_CENTER_OPTIONS} />
@@ -305,8 +305,8 @@ export default function CreateStockReceiptPage({ id: propId, onBack }) {
                     <AddIcon fontSize="small" />
                   </IconButton>
                 </Stack>
-              </Grid>
-            <Grid size={{ xs: 12, sm: 6, lg: 3 }}><FormTextField name="contactPerson" label="Contact Person" placeholder="Enter Contact Person" /></Grid>
+              </Grid> */}
+              <Grid size={{ xs: 12, sm: 6, lg: 3 }}><FormTextField name="contactPerson" label="Contact Person" placeholder="Enter Contact Person" /></Grid>
               <Grid size={{ xs: 12, sm: 6, lg: 3 }}><FormTextField name="mobileNo" label="Mobile No." placeholder="Enter Mobile No." /></Grid>
             </Grid>
           </Paper>
