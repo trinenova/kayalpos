@@ -11,6 +11,11 @@ export const authApi = baseApi.injectEndpoints({
       // Unwrap the { success, data } envelope so callers get { user, token } directly.
       transformResponse: (response) => response.data,
     }),
+    // Current role + permission matrix of the signed-in user.
+    getMe: builder.query({
+      query: () => '/auth/me',
+      transformResponse: (response) => response.data,
+    }),
     changePassword: builder.mutation({
       query: ({ currentPassword, newPassword }) => ({
         url: '/auth/change-password',
@@ -22,4 +27,4 @@ export const authApi = baseApi.injectEndpoints({
   }),
 });
 
-export const { useLoginMutation, useChangePasswordMutation } = authApi;
+export const { useLoginMutation, useChangePasswordMutation, useGetMeQuery } = authApi;

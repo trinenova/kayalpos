@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Stack, Box, Typography, Breadcrumbs, Link as MuiLink, Grid, Paper, Button, ButtonBase,
   TextField, MenuItem, InputAdornment,
@@ -83,6 +83,7 @@ function ReportTypeCard({ item, onOpen }) {
  */
 export default function FinancialReportsPage() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const [dateFrom, setDateFrom] = useState(DEFAULT_DATE_RANGE.from);
   const [dateTo, setDateTo] = useState(DEFAULT_DATE_RANGE.to);
   const [outlet, setOutlet] = useState('All Outlets');
@@ -97,7 +98,10 @@ export default function FinancialReportsPage() {
     setOutlet('All Outlets');
     setFinancialYear(DEFAULT_FINANCIAL_YEAR);
   };
-  const handleOpenReport = (item) => dispatch(showToast(`${item.label} report is coming soon`, 'info'));
+  const handleOpenReport = (item) => {
+    if (item.path) navigate(item.path);
+    else dispatch(showToast(`${item.label} report is coming soon`, 'info'));
+  };
 
   return (
     <Stack spacing={2}>

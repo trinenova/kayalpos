@@ -34,9 +34,12 @@ export default function SupplierViewDialog({ open, row, onClose, onEdit }) {
           <Field label="Phone" value={row.phone} />
           <Field label="Email" value={row.email} />
           <Field label="GST No." value={row.gstNo} />
-          <Field label="City" value={row.city} />
+          <Field label="Address" value={row.address} />
+          <Field label="Country" value={row.country} />
           <Field label="State" value={row.state} />
+          <Field label="City" value={row.city} />
           <Field label="Payment Terms" value={row.paymentTerms} />
+          <Field label="Remarks" value={row.remarks} />
           <Grid size={{ xs: 12, sm: 6 }}>
             <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>Status</Typography>
             <Chip

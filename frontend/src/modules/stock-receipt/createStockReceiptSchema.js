@@ -47,10 +47,7 @@ function todayFormatted() {
   return formatPickerDate(new Date());
 }
 
-// Ordered/Received Qty come pre-filled per row (e.g. from a linked Purchase
-// Order / GRN) while the item itself is still unselected, matching the
-// reference design's default 5-row grid — same convention the old mock
-// used, just now feeding a real backend instead of a fake save.
+// A blank grid row. Ordered/Received Qty may be pre-filled by the caller.
 export function emptyItemRow({ orderedQty = '', receivedQty = '' } = {}) {
   return {
     itemCode: '',
@@ -161,11 +158,7 @@ export const createStockReceiptDefaultValues = {
   otherRemarks: '',
 
   notes: '',
-  items: [
-    emptyItemRow({ orderedQty: '10.00', receivedQty: '10.00' }),
-    emptyItemRow({ orderedQty: '5.00', receivedQty: '5.00' }),
-    emptyItemRow({ orderedQty: '20.00', receivedQty: '15.00' }),
-    emptyItemRow({ orderedQty: '15.00', receivedQty: '15.00' }),
-    emptyItemRow({ orderedQty: '10.00', receivedQty: '10.00' }),
-  ],
+  // One blank row to start; ReceiptItemsTable adds the next one as soon as
+  // the last row gets an item.
+  items: [emptyItemRow()],
 };

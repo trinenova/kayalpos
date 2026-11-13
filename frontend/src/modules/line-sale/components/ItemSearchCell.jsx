@@ -5,10 +5,12 @@ import {
 import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined';
 
 import { useGetBarcodeLabelBatchesQuery } from '../../../api/barcodeLabelApi';
+import { useGetStockReceiptsQuery } from '../../../api/stockReceiptApi';
 import { formatCurrency } from '../../../utils/format';
 
 export const SOURCE_PRODUCT = 'Product master';
 export const SOURCE_BARCODE = 'Barcode & Label';
+export const SOURCE_RECEIPT = 'Stock Receipt';
 const MAX_OPTIONS = 25;
 
 const norm = (v) => String(v ?? '').trim().toLowerCase();
@@ -28,10 +30,15 @@ function focusFirstInputOfRow(el) {
  *     back to a product. Label rows whose item isn't an active product are
  *     dropped (nothing sellable), and the same item+barcode printed in many
  *     batches is de-duplicated.
+ *   - Barcodes keyed in on the product itself (Product.barcode) and on Stock
+ *     Receipt item rows (any status, so a receipt saved as Draft is already
+ *     scannable) — these are what make an item entered on a Stock Receipt
+ *     show up in the Line Sale Barcode / Item Name fields.
  * Every entry carries `source` so the dropdown can tag where it came from.
  */
 export function useItemSearchIndex(products) {
   const { data: batches = [], isLoading } = useGetBarcodeLabelBatchesQuery();
+  const { data: receipts = [] } = useGetStockReceiptsQuery();
 
   return useMemo(() => {
     const productByCode = Object.fromEntries(products.map((p) => [p.code, p]));
@@ -55,6 +62,34 @@ export function useItemSearchIndex(products) {
       });
     });
 
+    // Barcode typed on the Product master itself.
+    products.forEach((p) => {
+      const barcode = String(p.barcode || '').trim();
+      if (!barcode) return;
+      const key = `${p.code}|${barcode}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      labelEntries.push({
+        source: SOURCE_BARCODE, code: p.code, name: p.name, barcode, product: p,
+      });
+    });
+
+    // Barcodes keyed in on Stock Receipt item rows. Matched to a product by
+    // item code; rows for an inactive / unknown product are skipped.
+    receipts.forEach((receipt) => {
+      (receipt.items || []).forEach((item) => {
+        const barcode = String(item.barcode || '').trim();
+        const product = productByCode[item.itemCode];
+        if (!barcode || !product) return;
+        const key = `${item.itemCode}|${barcode}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        labelEntries.push({
+          source: SOURCE_RECEIPT, code: product.code, name: product.name, barcode, product,
+        });
+      });
+    });
+
     // First barcode on file per product code — shown in each row's Barcode cell.
     const barcodeByCode = {};
     labelEntries.forEach((e) => {
@@ -62,7 +97,7 @@ export function useItemSearchIndex(products) {
     });
 
     return { productByCode, productEntries, labelEntries, barcodeByCode, isLoading };
-  }, [products, batches, isLoading]);
+  }, [products, batches, receipts, isLoading]);
 }
 
 /**
@@ -77,7 +112,7 @@ export function useItemSearchIndex(products) {
  * to a single product; ambiguous / unknown input raises `onNotify`.
  */
 export default function ItemSearchCell({
-  index, line = null, onSelect, onNotify, autoFocus = false,
+  index, line = null, onSelect, onNotify, autoFocus = false, wide = false,
 }) {
   const { productEntries, labelEntries, isLoading } = index;
   const wrapRef = useRef(null);
@@ -197,6 +232,7 @@ export default function ItemSearchCell({
           if (typeof value === 'string') resolveTyped();
           else commit(value);
         }}
+        slotProps={wide ? { popper: { placement: 'bottom-start', sx: { width: 'fit-content !important', minWidth: 360, maxWidth: 560 } } } : undefined}
         noOptionsText="No matching items"
         renderOption={(props, option) => {
           const { key: _muiKey, ...optionProps } = props;
@@ -215,8 +251,8 @@ export default function ItemSearchCell({
                 <Chip
                   size="small"
                   variant="outlined"
-                  color={option.source === SOURCE_BARCODE ? 'primary' : 'default'}
-                  label={option.source === SOURCE_BARCODE ? 'Barcode' : 'Product'}
+                  color={option.source === SOURCE_PRODUCT ? 'default' : 'primary'}
+                  label={{ [SOURCE_BARCODE]: 'Barcode', [SOURCE_RECEIPT]: 'Receipt' }[option.source] || 'Product'}
                   sx={{ flexShrink: 0 }}
                 />
               </Box>
@@ -261,7 +297,27 @@ export function BarcodeCell({
 }) {
   const [typing, setTyping] = useState(null);
   const wrapRef = useRef(null);
+  const highlightedRef = useRef(null);
   const shown = typing ?? (line ? (index.barcodeByCode[line.code] || '') : '');
+
+  // Suggestions list ONLY barcodes keyed in on Stock Receipts (matched by
+  // barcode, item code or item name) — the Item Name field still searches
+  // everything.
+  const options = useMemo(() => {
+    const q = norm(typing);
+    if (!q) return [];
+    return index.labelEntries
+      .filter((e) => e.source === SOURCE_RECEIPT
+        && (norm(e.barcode).includes(q) || norm(e.code).includes(q) || norm(e.name).includes(q)))
+      .slice(0, MAX_OPTIONS);
+  }, [typing, index.labelEntries]);
+
+  const commit = (entry) => {
+    setTyping(null);
+    highlightedRef.current = null;
+    onSelect(entry.code);
+    if (!line) focusFirstInputOfRow(wrapRef.current);
+  };
 
   const resolve = () => {
     const q = norm(typing);
@@ -276,12 +332,14 @@ export function BarcodeCell({
     if (!line) focusFirstInputOfRow(wrapRef.current);
   };
 
-  // Enter, or Tab, accepts a typed/scanned barcode; on the blank row Tab keeps
-  // focus there so scanning can continue.
+  // Enter (nothing highlighted), or Tab, accepts a typed/scanned barcode; on
+  // the blank row Tab keeps focus there so scanning can continue.
   const handleKey = (e) => {
     if (e.key === 'Enter') {
-      e.preventDefault();
-      resolve();
+      if (!highlightedRef.current) {
+        e.preventDefault();
+        resolve();
+      }
     } else if (e.key === 'Tab' && !e.shiftKey && norm(typing)) {
       if (!line) e.preventDefault();
       resolve();
@@ -290,16 +348,204 @@ export function BarcodeCell({
 
   return (
     <Box ref={wrapRef} onKeyDownCapture={handleKey} sx={{ minWidth: 0, width: '100%' }}>
-      <TextField
+      <Autocomplete
         size="small"
         fullWidth
-        value={shown}
-        placeholder="Scan Barcode"
-        autoFocus={autoFocus}
-        onChange={(e) => setTyping(e.target.value)}
-        onFocus={(e) => e.target.select()}
+        freeSolo
+        autoHighlight={false}
+        clearOnBlur={false}
+        disableClearable
+        options={options}
+        value={null}
+        inputValue={shown}
+        filterOptions={(opts) => opts}
+        getOptionLabel={(option) => (typeof option === 'string' ? option : option.barcode)}
+        isOptionEqualToValue={(option, v) => option.code === v.code && option.barcode === v.barcode}
+        onInputChange={(_e, v, reason) => {
+          if (reason === 'input') {
+            highlightedRef.current = null;
+            setTyping(v);
+          }
+        }}
+        onHighlightChange={(_e, option) => { highlightedRef.current = option; }}
         onBlur={() => setTyping(null)}
-        slotProps={{ htmlInput: { inputMode: 'text', autoComplete: 'off' } }}
+        onChange={(_e, v) => { if (v && typeof v !== 'string') commit(v); }}
+        noOptionsText="No matching receipt barcodes"
+        slotProps={{ popper: { placement: 'bottom-start', sx: { width: 'fit-content !important', minWidth: 300, maxWidth: 480 } } }}
+        renderOption={(props, option) => {
+          const { key: _muiKey, ...optionProps } = props;
+          return (
+            <li key={`${option.code}-${option.barcode}`} {...optionProps}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', minWidth: 0 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                  <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{option.barcode}</Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap>{option.name} · {option.code}</Typography>
+                </Box>
+                <Chip size="small" variant="outlined" color="primary" label="Receipt" sx={{ flexShrink: 0 }} />
+              </Box>
+            </li>
+          );
+        }}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            size="small"
+            placeholder="Scan Barcode"
+            autoFocus={autoFocus}
+            onFocus={(e) => e.target.select()}
+            slotProps={{ ...params.slotProps, htmlInput: { ...params.slotProps?.htmlInput, autoComplete: 'off' } }}
+          />
+        )}
+      />
+    </Box>
+  );
+}
+
+/**
+ * Barcode input with auto-fill for form grids (Stock Receipt items) — the
+ * same "Scan Barcode" behaviour as Line Sale, but the barcode is a real form
+ * value. Typing / scanning shows matching items (barcode, code, Short ID or
+ * name) in a dropdown tagged by source; picking one — or Enter / Tab on an
+ * exact barcode, code or Short ID — calls `onSelect(code, barcode)` so the
+ * row's other cells are filled. Text that matches nothing is kept as typed
+ * (`onTextChange`) with a warning, so a brand-new barcode can still be keyed.
+ */
+export function BarcodeSearchCell({
+  index, value = '', onSelect, onTextChange, onNotify, wide = false,
+}) {
+  const { productEntries, labelEntries, isLoading } = index;
+  const [typing, setTyping] = useState(null);
+  const highlightedRef = useRef(null);
+  const inputValue = typing ?? value ?? '';
+  const query = typing ?? '';
+
+  const options = useMemo(() => {
+    const q = norm(query);
+    if (!q) return [];
+    const fromLabels = labelEntries
+      .filter((e) => norm(e.barcode).includes(q) || norm(e.code).includes(q) || norm(e.name).includes(q));
+    const fromProducts = productEntries
+      .filter((e) => norm(e.code).includes(q) || norm(e.name).includes(q) || norm(e.product.shortId).includes(q))
+      .map((e) => ({ ...e, barcode: index.barcodeByCode[e.code] || '' }));
+    return [...fromLabels, ...fromProducts].slice(0, MAX_OPTIONS);
+  }, [query, productEntries, labelEntries, index.barcodeByCode]);
+
+  const pick = (entry, typedBarcode) => {
+    setTyping(null);
+    highlightedRef.current = null;
+    onSelect(entry.code, entry.barcode || typedBarcode || index.barcodeByCode[entry.code] || '');
+  };
+
+  const findExact = (q) => (
+    labelEntries.find((e) => norm(e.barcode) === q)
+    || productEntries.find((e) => norm(e.code) === q)
+    || productEntries.find((e) => e.product.shortId && norm(e.product.shortId) === q)
+  );
+
+  // Resolve what was typed. `notify` is false on blur so merely tabbing
+  // through an empty-ish cell doesn't nag.
+  const resolve = ({ notify = true } = {}) => {
+    const raw = String(typing ?? '').trim();
+    const q = norm(raw);
+    if (!q) { setTyping(null); return false; }
+    const highlighted = highlightedRef.current;
+    const stillListed = highlighted
+      && options.some((o) => o.code === highlighted.code && o.source === highlighted.source);
+    const exact = (stillListed ? highlighted : null) || findExact(q);
+    if (exact) { pick(exact, exact.barcode ? '' : raw); return true; }
+    const distinct = [...new Set(options.map((e) => e.code))];
+    if (distinct.length === 1) { pick(options[0], ''); return true; }
+    // Unknown barcode: keep it as typed in the field.
+    onTextChange(raw);
+    setTyping(null);
+    if (notify) {
+      onNotify(
+        distinct.length > 1
+          ? `${distinct.length} items match "${raw}" — pick one from the list or type the exact barcode`
+          : `No item found for barcode "${raw}"`,
+        distinct.length > 1 ? 'info' : 'warning',
+      );
+    }
+    return false;
+  };
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter') {
+      // Only when nothing is highlighted: a highlighted option is accepted by
+      // the Autocomplete's own onChange.
+      if (!highlightedRef.current && norm(typing)) {
+        e.preventDefault();
+        resolve();
+      }
+    } else if (e.key === 'Tab' && !e.shiftKey && norm(typing)) {
+      resolve();
+    }
+  };
+
+  return (
+    <Box onKeyDownCapture={handleKey} sx={{ minWidth: 0, width: '100%' }}>
+      <Autocomplete
+        size="small"
+        fullWidth
+        freeSolo
+        autoHighlight={false}
+        clearOnBlur={false}
+        disableClearable
+        options={options}
+        value={null}
+        inputValue={inputValue}
+        loading={isLoading}
+        filterOptions={(opts) => opts}
+        groupBy={(option) => option.source}
+        getOptionLabel={(option) => (typeof option === 'string' ? option : option.barcode || option.code)}
+        isOptionEqualToValue={(option, v) => option.code === v.code && option.source === v.source}
+        onInputChange={(_e, v, reason) => {
+          if (reason === 'input') {
+            highlightedRef.current = null;
+            setTyping(v);
+          }
+        }}
+        onHighlightChange={(_e, option) => { highlightedRef.current = option; }}
+        onBlur={() => { if (norm(typing)) resolve({ notify: false }); else setTyping(null); }}
+        onChange={(_e, v) => {
+          // Dropdown pick arrives as an object; plain Enter is handled above.
+          if (v && typeof v !== 'string') pick(v, '');
+        }}
+        slotProps={wide ? { popper: { placement: 'bottom-start', sx: { width: 'fit-content !important', minWidth: 360, maxWidth: 560 } } } : undefined}
+        noOptionsText="No matching items"
+        renderOption={(props, option) => {
+          const { key: _muiKey, ...optionProps } = props;
+          return (
+            <li key={`${option.source}-${option.code}-${option.barcode}`} {...optionProps}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', minWidth: 0 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                  <Typography variant="body2" noWrap>{option.name}</Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap>
+                    {option.code}
+                    {option.product.shortId ? ` · ID ${option.product.shortId}` : ''}
+                    {option.barcode ? ` · ${option.barcode}` : ''}
+                  </Typography>
+                </Box>
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  color={option.source === SOURCE_PRODUCT ? 'default' : 'primary'}
+                  label={{ [SOURCE_BARCODE]: 'Barcode', [SOURCE_RECEIPT]: 'Receipt' }[option.source] || 'Product'}
+                  sx={{ flexShrink: 0 }}
+                />
+              </Box>
+            </li>
+          );
+        }}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            size="small"
+            placeholder="Scan / Enter Barcode"
+            onFocus={(e) => e.target.select()}
+            slotProps={{ ...params.slotProps, htmlInput: { ...params.slotProps?.htmlInput, autoComplete: 'off' } }}
+          />
+        )}
       />
     </Box>
   );

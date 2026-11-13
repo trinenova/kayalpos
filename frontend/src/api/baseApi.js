@@ -40,6 +40,12 @@ const baseQueryWithReauth = async (args, api, extraOptions) => {
     api.dispatch(showToast('Your session has expired. Please log in again.', 'warning'));
   }
 
+  // 403 = signed in, but the user's role lacks this permission (see
+  // backend/src/middleware/authorize.js). Say so instead of failing silently.
+  if (result.error?.status === 403) {
+    api.dispatch(showToast(result.error.data?.message || 'You do not have permission to do that.', 'warning'));
+  }
+
   return result;
 };
 
@@ -49,6 +55,6 @@ const baseQueryWithReauth = async (args, api, extraOptions) => {
 export const baseApi = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['Auth', 'Brand', 'Outlet', 'Warehouse', 'Product', 'Customer', 'Supplier', 'Sale', 'Promotion', 'GiftVoucher', 'LoyaltyProgram', 'SalesQuotation', 'SalesReturn', 'SalesOrder', 'SalesInvoice', 'BarcodeLabel', 'StockIndent', 'StockTransfer', 'StockReceipt', 'StockReturn', 'StockWastage', 'StockCount', 'ShiftSession', 'CashWithdrawal', 'CashDeposit', 'CashTransfer', 'CashDrawerOpening', 'ShiftClosing', 'CashReconciliation', 'ShortageExcess', 'CashierWiseSales', 'CashierPanel', 'Expense', 'Company', 'UomGroup', 'Uom', 'TaxCode', 'HsnSac', 'HeldBill'],
+  tagTypes: ['Auth', 'Brand', 'Outlet', 'Warehouse', 'Product', 'Customer', 'Supplier', 'Sale', 'Promotion', 'GiftVoucher', 'LoyaltyProgram', 'SalesQuotation', 'SalesReturn', 'SalesOrder', 'SalesInvoice', 'BarcodeLabel', 'StockIndent', 'StockTransfer', 'StockReceipt', 'StockReturn', 'StockWastage', 'StockCount', 'ShiftSession', 'CashWithdrawal', 'CashDeposit', 'CashTransfer', 'CashDrawerOpening', 'ShiftClosing', 'CashReconciliation', 'ShortageExcess', 'CashierWiseSales', 'CashierPanel', 'Expense', 'Company', 'UomGroup', 'Uom', 'TaxCode', 'HsnSac', 'HeldBill', 'User', 'Role', 'SalesReport'],
   endpoints: () => ({}),
 });

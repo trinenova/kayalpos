@@ -1,6 +1,7 @@
 import { prisma } from '../../config/prisma.js';
 import { ApiError } from '../../middleware/errorHandler.js';
 import { billIdOf, lineIdOf, parseBillId, parseLineId } from '../sale/tczIds.js';
+import { restoreToLot } from '../product-lot/productLot.service.js';
 
 function round2(n) {
   return Math.round(n * 100) / 100;
@@ -182,6 +183,12 @@ export async function createSalesReturn(tenantId, data, actor) {
       where: { id: line.productId },
       data: { availableQty: { increment: line.qty } },
     })));
+    // FIFO: the returned units go back into the lot they were sold from.
+    const soldLine = new Map(sale.lines.map((l) => [`${l.docEntry}-${l.lineId}`, l]));
+    for (const line of lineData) {
+      // eslint-disable-next-line no-await-in-loop
+      await restoreToLot(tx, tenantId, soldLine.get(`${line.docEntry}-${line.lineId}`)?.lotId, line.qty);
+    }
 
     return toReturnDto(row);
   });

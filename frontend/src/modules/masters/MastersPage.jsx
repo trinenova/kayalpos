@@ -10,6 +10,7 @@ import { useAppDispatch } from '../../app/hooks';
 import { logout } from '../../features/auth/authSlice';
 import { showToast } from '../../features/ui/uiSlice';
 
+import { usePermissions } from '../../hooks/usePermissions';
 import { CASHIER, useMasterItems } from './mastersMockData';
 
 function MasterCard({ item, onOpen }) {
@@ -78,7 +79,8 @@ export default function MastersPage() {
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const masterItems = useMasterItems();
+  const { can } = usePermissions();
+  const masterItems = useMasterItems().filter((item) => can(item.key, 'view'));
 
   const handleLogout = () => {
     dispatch(logout());

@@ -59,6 +59,8 @@ import { PAYMENT_METHODS, WALK_IN_CUSTOMER, TAX_RATE } from "./lineSaleMockData"
 import { printReceipt } from "./receiptPrint";
 import AppLogo from "../../components/common/AppLogo";
 import { useCompanyProfileQuery } from "../../api/companyApi";
+import { useGetProductLotsQuery } from "../../api/productLotApi";
+import { fifoAveragePrice, groupLotsByProduct } from "./fifoPricing";
 
 // Quick-cash chips next to the "Exact" chip (which fills the bill total).
 const QUICK_AMOUNTS = [100, 500, 2000];
@@ -204,7 +206,23 @@ export default function LineSalePage() {
     [products],
   );
 
-  const [cart, setCart] = useState([]);
+  // FIFO: open purchase lots per product (oldest first). The cart the rest of
+  // the page uses is `rawCart` re-priced across those lots — each line's price
+  // is the weighted average of the lots its qty will be taken from, so
+  // qty x price matches what the server bills (it splits the line per lot).
+  const { data: lotRows = [] } = useGetProductLotsQuery();
+  const lotsByProduct = useMemo(() => groupLotsByProduct(lotRows), [lotRows]);
+  const [rawCart, setCart] = useState([]);
+  const cart = useMemo(
+    () =>
+      rawCart.map((line) => {
+        const lots = lotsByProduct.get(line.id);
+        if (!lots || lots.length === 0) return line;
+        const fallback = productByCode[line.code]?.price ?? line.price;
+        return { ...line, price: fifoAveragePrice(lots, line.qty, fallback) };
+      }),
+    [rawCart, lotsByProduct, productByCode],
+  );
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState("amount");
   const [paymentMethod, setPaymentMethod] = useState("cash");

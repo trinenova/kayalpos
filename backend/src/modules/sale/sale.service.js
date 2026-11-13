@@ -5,6 +5,7 @@ import { TAX_RATE } from './saleConstants.js';
 import { completeHeldBill } from '../held-bill/heldBill.service.js';
 import { writeTczBill, toSaleDto } from './tczBilling.service.js';
 import { getOrCreateWalkInCustomer } from '../customer/customer.service.js';
+import { allocateFifoForSale, syncProductToHeadLot } from '../product-lot/productLot.service.js';
 
 /**
  * Preview of the bill number the NEXT sale will get (e.g. "LS-00001"),
@@ -85,29 +86,40 @@ export async function createSale({
     const wantedQty = new Map();
     lines.forEach((line) => wantedQty.set(line.productId, (wantedQty.get(line.productId) || 0) + line.qty));
 
-    let subTotal = 0;
-    const lineData = lines.map((line) => {
+    lines.forEach((line) => {
       const product = productById.get(line.productId);
       if (!product) throw new ApiError(400, 'One of the items in this sale no longer exists');
       if (product.status !== 'ACTIVE') throw new ApiError(400, `${product.name} is inactive and cannot be sold`);
       if (product.availableQty < wantedQty.get(line.productId)) {
         throw new ApiError(400, `Insufficient stock for ${product.name} — only ${product.availableQty} ${product.uom} available`);
       }
+    });
 
-      const price = Number(product.salePrice);
-      const amount = price * line.qty;
-      subTotal += amount;
+    // FIFO: each cart line is split across the oldest purchase lots first. Every
+    // resulting bill line carries its own lot's selling price and purchase cost
+    // (e.g. 7 units with 5 left in lot B1 and the rest in B2 -> two bill lines).
+    const allocations = await allocateFifoForSale(tx, tenantId, lines, productById);
 
-      return {
-        productId: product.id,
-        code: product.code,
-        name: product.name,
-        uom: product.uom,
-        qty: line.qty,
-        price,
-        taxRate: TAX_RATE,
-        amount,
-      };
+    let subTotal = 0;
+    const lineData = [];
+    lines.forEach((line, index) => {
+      const product = productById.get(line.productId);
+      allocations[index].forEach((part) => {
+        const amount = part.price * part.qty;
+        subTotal += amount;
+        lineData.push({
+          productId: product.id,
+          code: product.code,
+          name: product.name,
+          uom: product.uom,
+          qty: part.qty,
+          price: part.price,
+          taxRate: TAX_RATE,
+          amount,
+          lotId: part.lot?.id || null,
+          unitCost: part.cost,
+        });
+      });
     });
 
     const discountAmount = discountType === 'percent'
@@ -152,6 +164,12 @@ export async function createSale({
         const name = productById.get(productId)?.name || 'An item';
         throw new ApiError(409, `Stock for ${name} changed while this bill was being saved — nothing was charged. Review the cart and try again.`);
       }
+    }
+
+    // Show the next unit's lot price/MRP on the product from now on.
+    for (const productId of wantedQty.keys()) {
+      // eslint-disable-next-line no-await-in-loop
+      await syncProductToHeadLot(tx, tenantId, productId);
     }
 
     return sale;

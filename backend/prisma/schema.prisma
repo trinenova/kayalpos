@@ -40,6 +40,7 @@ model Tenant {
 
   outlets             Outlet[]
   users               User[]
+  roles               Role[]
   brands              Brand[]
   products            Product[]
   customers           Customer[]
@@ -75,6 +76,7 @@ model Tenant {
   priceLists          PriceList[]
   priceHistory        PriceHistory[]
   batchSerials        BatchSerial[]
+  productLots         ProductLot[]
   employees           Employee[]
   attachments         Attachment[]
   masterSyncs         MasterSync[]
@@ -251,6 +253,28 @@ model WarehouseContact {
   @@index([warehouseId])
 }
 
+// RBAC role. `permissions` is a JSON object keyed by menu key, e.g.
+// { "line-sale": { "view": true, "add": true, "edit": false, "delete": false } } —
+// see src/modules/permission/permissionCatalog.js for the valid keys/actions.
+model Role {
+  id          String   @id @default(cuid()) @map("Id")
+  tenantId    String   @map("TenantId")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String   @map("Name")
+  description String?  @map("Description")
+  permissions Json     @default("{}") @map("Permissions")
+  isActive    Boolean  @default(true) @map("IsActive")
+  createdAt   DateTime @default(now()) @map("CreatedAt")
+  updatedAt   DateTime @updatedAt @map("UpdatedAt")
+  createdBy   String?  @map("CreatedBy")
+  updatedBy   String?  @map("UpdatedBy")
+
+  users User[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
 model User {
   id           String    @id @default(cuid()) @map("Id")
   tenantId     String    @map("TenantId")
@@ -265,6 +289,10 @@ model User {
   employee     Employee? @relation(fields: [employeeId], references: [id])
   outletId     String?   @map("OutletId")
   outlet       Outlet?   @relation(fields: [outletId], references: [id])
+  // RBAC: the role whose permission matrix applies to this user. NULL means a
+  // full administrator (every account that predates RBAC stays that way).
+  roleId       String?   @map("RoleId")
+  appRole      Role?     @relation(fields: [roleId], references: [id], onDelete: SetNull)
   lastLogin    DateTime? @map("LastLogin")
   isActive     Boolean   @default(true) @map("IsActive")
   sapRef        String?   @map("SapRef")
@@ -518,6 +546,7 @@ model Product {
   sellingPrices SellingPrice[]
   batchSerials  BatchSerial[]
   priceHistory  PriceHistory[]
+  lots          ProductLot[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, shortId])
@@ -646,6 +675,37 @@ model BatchSerial {
   @@index([tenantId, status])
   @@index([productId])
   @@index([warehouseId])
+}
+
+// Purchase lot (batch) of a Product - one row per receipt line / opening stock,
+// each with its own MRP, purchase price and selling price. Line Sale sells from
+// the oldest lot first (FIFO: receivedAt, then createdAt). Product.availableQty
+// stays the product's total and is kept in step with the lots' qtyRemaining.
+model ProductLot {
+  id       String @id @default(cuid()) @map("Id")
+  tenantId String @map("TenantId")
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  productId String  @map("ProductId")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  lotNo         String    @map("LotNo")
+  source        String    @default("RECEIPT") @map("Source") // OPENING | RECEIPT | MANUAL
+  sourceRef     String?   @map("SourceRef")
+  receivedAt    DateTime  @default(now()) @map("ReceivedAt")
+  mrp           Decimal   @default(0) @map("Mrp") @db.Decimal(12, 2)
+  purchasePrice Decimal   @default(0) @map("PurchasePrice") @db.Decimal(12, 2)
+  sellingPrice  Decimal   @default(0) @map("SellingPrice") @db.Decimal(12, 2)
+  qtyReceived   Decimal   @default(0) @map("QtyReceived") @db.Decimal(14, 3)
+  qtyRemaining  Decimal   @default(0) @map("QtyRemaining") @db.Decimal(14, 3)
+  expiryDate    DateTime? @map("ExpiryDate")
+  createdAt     DateTime  @default(now()) @map("CreatedAt")
+  updatedAt     DateTime  @updatedAt @map("UpdatedAt")
+
+  saleLines TczPos1[]
+
+  @@index([tenantId, productId, receivedAt])
+  @@index([productId, qtyRemaining])
 }
 
 // Selling Price master (Masters > Selling Price) — the calculated selling
@@ -816,6 +876,12 @@ model Supplier {
   city         String?      @map("City")
   state        String?      @map("State")
   paymentTerms String?      @map("PaymentTerms")
+  // Postal address + free-text remarks. country/state/city are stored as
+  // names (same convention as city/state above); the frontend fills them from
+  // the country-state-city package, defaulting country to India.
+  address      String?      @map("Address")
+  country      String?      @map("Country")
+  remarks      String?      @map("Remarks")
   status       RecordStatus @default(ACTIVE) @map("Status")
   sapRef        String?   @map("SapRef")
   sapSyncStatus String    @default("Pending") @map("SapSyncStatus")
@@ -1897,6 +1963,10 @@ model StockReceiptItem {
   batchNo     String?      @map("BatchNo")
   expiryDate  DateTime?    @map("ExpiryDate")
   remarks     String?      @map("Remarks")
+  // Optional selling-side prices for the lot this line creates on receipt;
+  // default to the Product master's MRP / sale price when blank.
+  mrp          Decimal?    @map("Mrp") @db.Decimal(12, 2)
+  sellingPrice Decimal?    @map("SellingPrice") @db.Decimal(12, 2)
 
   @@index([receiptId])
 }
@@ -2659,6 +2729,11 @@ model TczPos1 {
   // ---- extra columns (not in the SQL Server script) ----
   uom           String?  @map("Uom") @db.VarChar(50)
   taxRate       Decimal? @map("TaxRate") @db.Decimal(5, 4)
+  // FIFO purchase lot this line was sold from, and that lot's purchase price
+  // (frozen at sale time so Gross Profit is exact). NULL for legacy lines.
+  lotId         String?  @map("LotId")
+  lot           ProductLot? @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  unitCost      Decimal? @map("UnitCost") @db.Decimal(19, 6)
 
   returnItems SalesReturnItem[]
 

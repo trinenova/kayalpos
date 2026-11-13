@@ -139,6 +139,9 @@ export async function writeTczBill(tx, {
       taxableValue: round6(lineTaxable),
       taxValue: round6(lineTaxable * Number(line.taxRate)),
       taxRate: line.taxRate,
+      // FIFO lot sold from + that lot's purchase price (null when unlotted).
+      lotId: line.lotId || null,
+      unitCost: line.unitCost == null ? null : round2(line.unitCost),
       // Tax rate as a percent (5 for 5%).
       tax: round6(Number(line.taxRate) * 100),
       taxCode: null,

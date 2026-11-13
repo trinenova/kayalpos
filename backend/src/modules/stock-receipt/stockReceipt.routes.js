@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../../middleware/auth.js';
 import { validateRequest } from '../../middleware/validateRequest.js';
 import { createStockReceiptSchema, updateStockReceiptSchema } from './stockReceipt.schema.js';
+import { importReceiptsSchema, importStockReceipts } from './stockReceipt.import.js';
 import {
   listStockReceipts, getStockReceipt, createStockReceipt, updateStockReceipt,
   deleteStockReceipt, nextCodePreview, getStockReceiptSummary,
@@ -25,6 +26,14 @@ router.get('/next-code', async (req, res, next) => {
 router.get('/summary', async (req, res, next) => {
   try {
     const summary = await getStockReceiptSummary(req.user.tenantId);
+    res.json({ success: true, data: summary });
+  } catch (err) { next(err); }
+});
+
+// Excel import (Stock Receipt > Import Receipts) — one call per batch of receipts.
+router.post('/import', validateRequest(importReceiptsSchema), async (req, res, next) => {
+  try {
+    const summary = await importStockReceipts(req.user.tenantId, req.body.receipts, req.user);
     res.json({ success: true, data: summary });
   } catch (err) { next(err); }
 });

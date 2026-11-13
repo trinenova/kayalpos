@@ -16,7 +16,9 @@
     "test:tcz-billing": "node test/tczBilling.integration.mjs",
     "test:tcz-createtime": "node test/tczCreateTime.unit.mjs",
     "test:tcz-timezone": "node test/tczTimezone.integration.mjs",
-    "test:shift-variance": "node test/shiftVariance.integration.mjs"
+    "test:shift-variance": "node test/shiftVariance.integration.mjs",
+    "test:fifo-lots": "node test/fifoLots.unit.mjs",
+    "test:fifo-lots-db": "node test/fifoLots.integration.mjs"
   },
   "keywords": [],
   "author": "",

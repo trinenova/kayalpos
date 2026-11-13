@@ -42,5 +42,5 @@ export const SALES_REPORT_ITEMS = [
   { key: 'payment-wise-sales', label: 'Payment-wise Sales', description: 'View sales summary by payment modes.', icon: CreditCardOutlinedIcon, color: '#7C3AED' },
   { key: 'discount-report', label: 'Discount Report', description: 'View discounts given during sales.', icon: PercentOutlinedIcon, color: '#F5A623' },
   { key: 'tax-report', label: 'Tax Report', description: 'View tax collected details and summary.', icon: ReceiptOutlinedIcon, color: '#2563EB' },
-  { key: 'return-report', label: 'Return Report', description: 'View holes returns summary and details.', icon: KeyboardReturnOutlinedIcon, color: '#E5484D' },
+  { key: 'return-report', label: 'Return Report', description: 'View sales returns summary and details.', icon: KeyboardReturnOutlinedIcon, color: '#E5484D' },
 ];

@@ -40,6 +40,18 @@ const stockReceiptApi = baseApi.injectEndpoints({
         { type: 'StockReceipt', id: 'LIST' },
         { type: 'StockReceipt', id: 'NEXT' },
         { type: 'StockReceipt', id: 'SUMMARY' },
+        // Receiving a receipt adds stock (FIFO lots) to products.
+        { type: 'Product', id: 'LIST' },
+      ],
+    }),
+    // Excel import: { receipts: [...] } -> { total, created, updated, failed, errors }.
+    StockReceiptImport: builder.mutation({
+      query: (body) => ({ url: '/stock-receipts/import', method: 'POST', body }),
+      transformResponse: (response) => response.data,
+      invalidatesTags: [
+        { type: 'StockReceipt', id: 'LIST' },
+        { type: 'StockReceipt', id: 'NEXT' },
+        { type: 'StockReceipt', id: 'SUMMARY' },
       ],
     }),
     StockReceiptUpdate: builder.mutation({
@@ -49,6 +61,7 @@ const stockReceiptApi = baseApi.injectEndpoints({
         { type: 'StockReceipt', id },
         { type: 'StockReceipt', id: 'LIST' },
         { type: 'StockReceipt', id: 'SUMMARY' },
+        { type: 'Product', id: 'LIST' },
       ],
     }),
     StockReceiptDelete: builder.mutation({
@@ -67,5 +80,6 @@ export const useGetStockReceiptQuery = stockReceiptApi.useStockReceiptByIdQuery;
 export const useNextStockReceiptCodeQuery = stockReceiptApi.useNextStockReceiptCodeQuery;
 export const useStockReceiptSummaryQuery = stockReceiptApi.useStockReceiptSummaryQuery;
 export const useCreateStockReceiptMutation = stockReceiptApi.useStockReceiptCreateMutation;
+export const useImportStockReceiptsMutation = stockReceiptApi.useStockReceiptImportMutation;
 export const useUpdateStockReceiptMutation = stockReceiptApi.useStockReceiptUpdateMutation;
 export const useDeleteStockReceiptMutation = stockReceiptApi.useStockReceiptDeleteMutation;

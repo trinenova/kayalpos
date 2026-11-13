@@ -61,7 +61,7 @@ function matchesSearch(haystack, search) {
 
 // Only ADMIN may look across outlets; any other role stays on its own
 // outlet — same rule shiftVariance.service.js's resolveOutletIds follows.
-async function resolveOutletIds(user, outletId) {
+export async function resolveOutletIds(user, outletId) {
   const mayChoose = user.role === 'ADMIN';
   if (!mayChoose || !outletId || outletId === 'all') {
     if (mayChoose && outletId === 'all') {

@@ -5,6 +5,8 @@ import {
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import { useTranslation } from 'react-i18next';
 
+import { usePermissions } from '../../hooks/usePermissions';
+
 
 /**
  * Tile landing page for a sidebar parent menu (Sales, Marketing, Inventory).
@@ -48,6 +50,8 @@ function GroupTile({ item, label, description, onOpen }) {
 export default function GroupLandingPage({ titleKey, items, descPrefix }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { can } = usePermissions();
+  const visibleItems = items.filter((item) => can(item.key, 'view'));
 
   return (
     <Stack spacing={2}>
@@ -60,7 +64,7 @@ export default function GroupLandingPage({ titleKey, items, descPrefix }) {
       </Box>
 
       <Grid container spacing={2}>
-        {items.map((item) => (
+        {visibleItems.map((item) => (
           <Grid key={item.key} size={{ xs: 12, sm: 4 }}>
             <GroupTile
               item={item}

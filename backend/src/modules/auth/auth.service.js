@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../../config/prisma.js';
 import { env } from '../../config/env.js';
 import { ApiError } from '../../middleware/errorHandler.js';
+import { getAccess } from '../permission/permission.service.js';
 
 const SALT_ROUNDS = 10;
 
@@ -42,7 +43,15 @@ export async function login({ username, password, outletId }) {
 
   const token = jwt.sign(payload, env.JWT_SECRET, { expiresIn: '12h' });
 
-  return { user: payload, token };
+  const access = await getAccess(user.id);
+  await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
+
+  return { user: { ...payload, ...access }, token };
+}
+
+/** Current role + permissions for the signed-in user (frontend refreshes this on load). */
+export async function getMe(userId) {
+  return getAccess(userId);
 }
 
 /**

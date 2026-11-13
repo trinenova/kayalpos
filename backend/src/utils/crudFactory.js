@@ -62,6 +62,9 @@ export function createCrudRouter({
   // Customer each get their own), keyed by tenant + query shape. Any write
   // below clears it, so a save is visible on the very next list call.
   const listCache = createMemoryCache({ ttlMs: cacheTtlMs });
+  // Lets a module's own bulk-write route (e.g. an Excel import) drop the cached
+  // list so the very next list call shows the new rows.
+  router.clearListCache = () => listCache.clear();
 
   function buildWhere(req) {
     const { search, status, isActive } = req.query;

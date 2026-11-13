@@ -30,6 +30,10 @@ import CloudSyncOutlinedIcon from '@mui/icons-material/CloudSyncOutlined';
 import CloudDoneOutlinedIcon from '@mui/icons-material/CloudDoneOutlined';
 import CloudQueueOutlinedIcon from '@mui/icons-material/CloudQueueOutlined';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
+import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined';
+
+import { usePermissions } from '../../hooks/usePermissions';
+import { NODE_BY_KEY } from '../../features/permissions/permissionCatalog';
 
 /**
  * Single source of truth for the sidebar + "Quick Access" grid on Home.
@@ -111,6 +115,9 @@ export const NAV_SECTIONS = [
       { key: 'cashier-panel', labelKey: 'nav.cashierPanel', icon: BadgeOutlinedIcon, path: '/cashier-panel', quickAccess: true, color: '#78350F' },
       { key: 'expenses-book', labelKey: 'nav.expensesBook', icon: MenuBookOutlinedIcon, path: '/expenses-book', quickAccess: true, color: '#451A03' },
       { key: 'reports', labelKey: 'nav.reports', icon: BarChartOutlinedIcon, path: '/reports', color: '#1E3A8A' },
+      {
+        key: 'user-management', labelKey: 'nav.userManagement', defaultLabel: 'User Management', icon: AdminPanelSettingsOutlinedIcon, path: '/user-management', color: '#7F1D1D',
+      },
     ],
   },
 ];
@@ -121,38 +128,46 @@ export const ALL_NAV_ITEMS = [...NAV_SECTIONS.flatMap((section) => section.items
 export const QUICK_ACCESS_ITEMS = ALL_NAV_ITEMS.filter((item) => item.quickAccess);
 
 function withTranslatedLabel(item, t) {
-  return { ...item, label: t(item.labelKey) };
+  return { ...item, label: t(item.labelKey, { defaultValue: item.defaultLabel }) };
 }
+
+// Home (and anything not in the permission catalog) is always visible; every
+// catalogued menu needs `view` on it — for a group such as Sales, on any of
+// its sub-menus.
+const isVisible = (item, can) => !NODE_BY_KEY[item.key] || can(item.key, 'view');
 
 /** NAV_SECTIONS with each item's `label` translated into the active language. */
 export function useNavSections() {
   const { t, i18n } = useTranslation();
+  const { can } = usePermissions();
   return useMemo(
     () => NAV_SECTIONS.map((section) => ({
       ...section,
-      items: section.items.map((item) => withTranslatedLabel(item, t)),
+      items: section.items.filter((item) => isVisible(item, can)).map((item) => withTranslatedLabel(item, t)),
     })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, i18n.language],
+    [t, i18n.language, can],
   );
 }
 
 /** ALL_NAV_ITEMS with each item's `label` translated into the active language. */
 export function useAllNavItems() {
   const { t, i18n } = useTranslation();
+  const { can } = usePermissions();
   return useMemo(
-    () => ALL_NAV_ITEMS.map((item) => withTranslatedLabel(item, t)),
+    () => ALL_NAV_ITEMS.filter((item) => isVisible(item, can)).map((item) => withTranslatedLabel(item, t)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, i18n.language],
+    [t, i18n.language, can],
   );
 }
 
 /** QUICK_ACCESS_ITEMS with each item's `label` translated into the active language. */
 export function useQuickAccessItems() {
   const { t, i18n } = useTranslation();
+  const { can } = usePermissions();
   return useMemo(
-    () => QUICK_ACCESS_ITEMS.map((item) => withTranslatedLabel(item, t)),
+    () => QUICK_ACCESS_ITEMS.filter((item) => isVisible(item, can)).map((item) => withTranslatedLabel(item, t)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, i18n.language],
+    [t, i18n.language, can],
   );
 }

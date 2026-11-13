@@ -1,4 +1,4 @@
-import { Autocomplete, TextField } from '@mui/material';
+import { Autocomplete, TextField, Box, Typography } from '@mui/material';
 import { Controller } from 'react-hook-form';
 
 /**
@@ -22,7 +22,7 @@ import { Controller } from 'react-hook-form';
  * as free-standing text rather than silently blanking the field.
  */
 export default function ItemCodeAutocomplete({
-  control, name, products = [], onSelectProduct, placeholder = 'Search Item Code', disabled = false,
+  control, name, products = [], onSelectProduct, placeholder = 'Search Item Code', disabled = false, compact = false,
 }) {
   return (
     <Controller
@@ -40,7 +40,22 @@ export default function ItemCodeAutocomplete({
             options={products}
             value={value}
             onBlur={field.onBlur}
-            getOptionLabel={(opt) => (opt?.name ? `${opt.code} — ${opt.name}` : (opt?.code || ''))}
+            // compact: the input shows just the code (so it never gets cut to
+            // "PR…") while the dropdown opens wider than the cell and lists
+            // "code — name" in full.
+            getOptionLabel={(opt) => (compact ? (opt?.code || '') : (opt?.name ? `${opt.code} — ${opt.name}` : (opt?.code || '')))}
+            slotProps={compact ? { popper: { placement: 'bottom-start', sx: { width: 'fit-content !important', minWidth: 320, maxWidth: 520 } } } : undefined}
+            renderOption={compact ? (props, opt) => {
+              const { key, ...rest } = props;
+              return (
+                <li key={key} {...rest}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{opt.code}</Typography>
+                    <Typography variant="caption" color="text.secondary">{opt.name}</Typography>
+                  </Box>
+                </li>
+              );
+            } : undefined}
             isOptionEqualToValue={(opt, val) => opt.code === val?.code}
             onChange={(_e, newValue) => {
               field.onChange(newValue?.code || '');

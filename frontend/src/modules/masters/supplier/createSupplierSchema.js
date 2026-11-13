@@ -1,9 +1,34 @@
 import { z } from 'zod';
+import { Country, State, City } from 'country-state-city';
 import {
   SUPPLIER_GROUP_OPTIONS, CITY_OPTIONS, STATE_OPTIONS, STATUS_OPTIONS,
 } from './supplierMockData';
 
 export { SUPPLIER_GROUP_OPTIONS, CITY_OPTIONS, STATE_OPTIONS, STATUS_OPTIONS };
+
+// Country / State / City come from the `country-state-city` package. Values
+// are stored as plain names (same free-text columns as before), so the ISO
+// codes the package needs are looked up from the chosen names on demand.
+export const DEFAULT_COUNTRY = 'India';
+export const DEFAULT_STATE = 'Tamil Nadu';
+export const DEFAULT_CITY = 'Coimbatore';
+
+export const COUNTRY_NAMES = Country.getAllCountries().map((c) => c.name);
+
+const countryByName = (name) => Country.getAllCountries().find((c) => c.name === name);
+
+export function getStateNames(countryName) {
+  const country = countryByName(countryName);
+  return country ? State.getStatesOfCountry(country.isoCode).map((s) => s.name) : [];
+}
+
+export function getCityNames(countryName, stateName) {
+  const country = countryByName(countryName);
+  if (!country) return [];
+  const state = State.getStatesOfCountry(country.isoCode).find((s) => s.name === stateName);
+  if (!state) return [];
+  return City.getCitiesOfState(country.isoCode, state.isoCode).map((c) => c.name);
+}
 
 // FormSelect needs [{value,label}] — these three lists stay plain strings
 // (frontend-owned free text, same "list lives in the frontend" convention as
@@ -11,8 +36,6 @@ export { SUPPLIER_GROUP_OPTIONS, CITY_OPTIONS, STATE_OPTIONS, STATUS_OPTIONS };
 // shape everywhere else they're already used (SupplierPage's filter bar
 // reads them as plain strings).
 export const GROUP_SELECT_OPTIONS = SUPPLIER_GROUP_OPTIONS.map((v) => ({ value: v, label: v }));
-export const CITY_SELECT_OPTIONS = CITY_OPTIONS.map((v) => ({ value: v, label: v }));
-export const STATE_SELECT_OPTIONS = STATE_OPTIONS.map((v) => ({ value: v, label: v }));
 
 // A GSTIN is a fixed 15-character format: 2-digit state code, 10-character
 // PAN, 1-digit entity code, the literal 'Z', and a final checksum character.
@@ -36,8 +59,11 @@ export const createSupplierSchema = z.object({
   phone: z.string().trim().optional(),
   email: z.string().trim().email('Enter a valid email address').optional().or(z.literal('')),
   gstNo: z.string().trim().optional(),
+  address: z.string().trim().max(500, 'Address cannot exceed 500 characters').optional(),
+  country: z.string().trim().optional(),
   city: z.string().trim().optional(),
   state: z.string().trim().optional(),
+  remarks: z.string().trim().max(500, 'Remarks cannot exceed 500 characters').optional(),
   paymentTerms: z.string().trim().max(50, 'Payment terms cannot exceed 50 characters').optional(),
   status: z.string().trim().min(1, 'Select a status'),
 }).superRefine((data, ctx) => {
@@ -58,8 +84,11 @@ export const createSupplierDefaultValues = {
   phone: '',
   email: '',
   gstNo: '',
-  city: CITY_OPTIONS[0],
-  state: STATE_OPTIONS[0],
+  address: '',
+  country: DEFAULT_COUNTRY,
+  city: DEFAULT_CITY,
+  state: DEFAULT_STATE,
+  remarks: '',
   paymentTerms: '30 Days',
   status: 'Active',
 };
@@ -74,8 +103,11 @@ export function supplierToFormValues(row) {
     phone: row.phone || '',
     email: row.email || '',
     gstNo: row.gstNo || '',
-    city: row.city || CITY_OPTIONS[0],
-    state: row.state || STATE_OPTIONS[0],
+    address: row.address || '',
+    country: row.country || DEFAULT_COUNTRY,
+    city: row.city || '',
+    state: row.state || '',
+    remarks: row.remarks || '',
     paymentTerms: row.paymentTerms || '',
     status: String(row.status).toUpperCase() === 'INACTIVE' ? 'Inactive' : 'Active',
   };
@@ -89,8 +121,11 @@ export function supplierFormValuesToPayload(values) {
     phone: values.phone?.trim() || undefined,
     email: values.email?.trim() || undefined,
     gstNo: values.gstNo?.trim() ? values.gstNo.trim().toUpperCase() : undefined,
+    address: values.address?.trim() || undefined,
+    country: values.country || undefined,
     city: values.city || undefined,
     state: values.state || undefined,
+    remarks: values.remarks?.trim() || undefined,
     paymentTerms: values.paymentTerms?.trim() || undefined,
     status: values.status === 'Inactive' ? 'INACTIVE' : 'ACTIVE',
   };

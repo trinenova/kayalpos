@@ -41,7 +41,7 @@ import CashierWiseSalesPage from './modules/cashier-panel/CashierWiseSalesPage';
 import ExpensesBookPage from './modules/expenses-book/ExpensesBookPage';
 import ReportsPage from './modules/reports/ReportsPage';
 import SalesReportsPage from './modules/reports/sales/SalesReportsPage';
-import SalesReportDetailPage from './modules/reports/sales/SalesReportDetailPage';
+import SalesReportRoute from './modules/reports/sales/SalesReportRoute';
 import InventoryReportsPage from './modules/reports/inventory/InventoryReportsPage';
 import InventoryReportDetailPage from './modules/reports/inventory/InventoryReportDetailPage';
 import PurchaseReportsPage from './modules/reports/purchase/PurchaseReportsPage';
@@ -49,6 +49,13 @@ import CashierReportsPage from './modules/reports/cashier/CashierReportsPage';
 import ShiftVarianceReportPage from './modules/reports/cashier/ShiftVarianceReportPage';
 import CashierReportDetailPage from './modules/reports/cashier/CashierReportDetailPage';
 import FinancialReportsPage from './modules/reports/financial/FinancialReportsPage';
+import GrossProfitReportPage from './modules/reports/financial/GrossProfitReportPage';
+import NetSalesReportPage from './modules/reports/financial/NetSalesReportPage';
+import ExpenseReportPage from './modules/reports/financial/ExpenseReportPage';
+import ProfitabilityReportPage from './modules/reports/financial/ProfitabilityReportPage';
+import TaxSummaryReportPage from './modules/reports/financial/TaxSummaryReportPage';
+import OutstandingReportPage from './modules/reports/financial/OutstandingReportPage';
+import PaymentCollectionReportPage from './modules/reports/financial/PaymentCollectionReportPage';
 import SapReportsPage from './modules/reports/sap/SapReportsPage';
 import MasterSyncPage from './modules/master-sync/MasterSyncPage';
 import StockSyncPage from './modules/stock-sync/StockSyncPage';
@@ -67,6 +74,7 @@ import PriceListPage from './modules/masters/price-list/PriceListPage';
 import BatchSerialPage from './modules/masters/batch-serial/BatchSerialPage';
 import SupplierPage from './modules/masters/supplier/SupplierPage';
 import EmployeePage from './modules/masters/employee/EmployeePage';
+import UserManagementPage from './modules/user-management/UserManagementPage';
 import SettingsPage from './modules/settings/SettingsPage';
 import ProfilePage from './modules/settings/ProfilePage';
 import ProtectedRoute from './routes/ProtectedRoute';
@@ -113,7 +121,7 @@ export default function App() {
             <Route path="/expenses-book" element={<ExpensesBookPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/reports/sales" element={<SalesReportsPage />} />
-            <Route path="/reports/sales/:reportKey" element={<SalesReportDetailPage />} />
+            <Route path="/reports/sales/:reportKey" element={<SalesReportRoute />} />
             <Route path="/reports/inventory" element={<InventoryReportsPage />} />
             <Route path="/reports/inventory/:reportKey" element={<InventoryReportDetailPage />} />
             <Route path="/reports/purchase" element={<PurchaseReportsPage />} />
@@ -121,6 +129,13 @@ export default function App() {
             <Route path="/reports/cashier/shift-variance" element={<ShiftVarianceReportPage />} />
             <Route path="/reports/cashier/:reportKey" element={<CashierReportDetailPage />} />
             <Route path="/reports/financial" element={<FinancialReportsPage />} />
+            <Route path="/reports/financial/gross-profit" element={<GrossProfitReportPage />} />
+            <Route path="/reports/financial/net-sales" element={<NetSalesReportPage />} />
+            <Route path="/reports/financial/expenses" element={<ExpenseReportPage />} />
+            <Route path="/reports/financial/profitability" element={<ProfitabilityReportPage />} />
+            <Route path="/reports/financial/tax-summary" element={<TaxSummaryReportPage />} />
+            <Route path="/reports/financial/outstanding" element={<OutstandingReportPage />} />
+            <Route path="/reports/financial/payment-collection" element={<PaymentCollectionReportPage />} />
             <Route path="/reports/sap" element={<SapReportsPage />} />
             <Route path="/master-sync" element={<MasterSyncPage />} />
             <Route path="/stock-sync" element={<StockSyncPage />} />
@@ -155,6 +170,7 @@ export default function App() {
             <Route path="/cashier-panel/cash-reconciliation" element={<CashReconciliationPage />} />
             <Route path="/cashier-panel/shortage-excess" element={<ShortageExcessPage />} />
             <Route path="/cashier-panel/cashier-wise-sales" element={<CashierWiseSalesPage />} />
+            <Route path="/user-management" element={<UserManagementPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/profile" element={<ProfilePage />} />
           </Route>

@@ -1,9 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
   Stack, Typography, Button, Grid, TextField, CircularProgress,
 } from '@mui/material';
-import { FormProvider, useForm } from 'react-hook-form';
+import { FormProvider, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import CloseIcon from '@mui/icons-material/Close';
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
@@ -12,10 +12,11 @@ import { useAppDispatch } from '../../../../app/hooks';
 import { showToast } from '../../../../features/ui/uiSlice';
 import FormTextField from '../../../../components/form/FormTextField';
 import FormSelect from '../../../../components/form/FormSelect';
+import FormAutocomplete from '../../../../components/form/FormAutocomplete';
 import { useCreateSupplierMutation, useUpdateSupplierMutation, useNextSupplierCode } from '../../../../api/supplierApi';
 import {
   createSupplierSchema, createSupplierDefaultValues, supplierToFormValues, supplierFormValuesToPayload,
-  GROUP_SELECT_OPTIONS, CITY_SELECT_OPTIONS, STATE_SELECT_OPTIONS, STATUS_OPTIONS,
+  GROUP_SELECT_OPTIONS, STATUS_OPTIONS, COUNTRY_NAMES, getStateNames, getCityNames,
 } from '../createSupplierSchema';
 
 /**
@@ -43,7 +44,15 @@ export default function SupplierFormDialog({ open, mode = 'add', initialValues, 
     defaultValues: createSupplierDefaultValues,
     mode: 'onTouched',
   });
-  const { handleSubmit, reset, formState: { isSubmitting } } = methods;
+  const {
+    handleSubmit, reset, setValue, control, formState: { isSubmitting },
+  } = methods;
+
+  // State options depend on Country, City options on Country + State.
+  const country = useWatch({ control, name: 'country' });
+  const state = useWatch({ control, name: 'state' });
+  const stateOptions = useMemo(() => getStateNames(country), [country]);
+  const cityOptions = useMemo(() => getCityNames(country, state), [country, state]);
 
   useEffect(() => {
     if (open) reset(isEdit && initialValues ? supplierToFormValues(initialValues) : createSupplierDefaultValues);
@@ -102,17 +111,37 @@ export default function SupplierFormDialog({ open, mode = 'add', initialValues, 
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormTextField name="gstNo" label="GST No." placeholder="15-character GSTIN" maxLength={15} />
               </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormSelect name="city" label="City" options={CITY_SELECT_OPTIONS} />
+              <Grid size={{ xs: 12 }}>
+                <FormTextField name="address" label="Address" placeholder="Door no., street, area" multiline minRows={2} />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <FormSelect name="state" label="State" options={STATE_SELECT_OPTIONS} />
+                <FormAutocomplete
+                  name="country"
+                  label="Country"
+                  options={COUNTRY_NAMES}
+                  onValueChange={() => { setValue('state', ''); setValue('city', ''); }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormAutocomplete
+                  name="state"
+                  label="State"
+                  options={stateOptions}
+                  disabled={!country}
+                  onValueChange={() => setValue('city', '')}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormAutocomplete name="city" label="City" options={cityOptions} disabled={!state} />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormTextField name="paymentTerms" label="Payment Terms" placeholder="e.g. 30 Days" />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormSelect name="status" label="Status *" options={STATUS_OPTIONS} />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormTextField name="remarks" label="Remarks" placeholder="Any notes about this supplier" multiline minRows={2} />
               </Grid>
             </Grid>
           </DialogContent>

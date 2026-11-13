@@ -8,6 +8,8 @@ import TabBar from './TabBar';
 import { useAppDispatch, useAppSelector } from '../../app/hooks';
 import { selectSidebarOpen, toggleSidebar, selectMaxOpenTabs, showToast } from '../../features/ui/uiSlice';
 import { openTab, selectOpenTabPaths } from '../../features/tabs/tabsSlice';
+import { useAccessSync } from '../../hooks/useAccessSync';
+import AccessGate from '../common/AccessGate';
 
 /**
  * Shared shell for every authenticated page: Sidebar + Topbar + content
@@ -21,6 +23,7 @@ export default function AppShell() {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const dispatch = useAppDispatch();
+  useAccessSync();
   const sidebarExpanded = useAppSelector(selectSidebarOpen);
   const maxOpenTabs = useAppSelector(selectMaxOpenTabs);
   const openTabPaths = useAppSelector(selectOpenTabPaths);
@@ -76,7 +79,7 @@ export default function AppShell() {
           <TabBar />
         </Box>
         <Box component="main" sx={{ flex: 1, p: { xs: 1.5, sm: 2, md: 3 } }}>
-          <Outlet />
+          <AccessGate><Outlet /></AccessGate>
         </Box>
         <Footer />
       </Box>

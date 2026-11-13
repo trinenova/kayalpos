@@ -21,6 +21,8 @@ const itemRowSchema = z.object({
   discount: z.coerce.number().min(0, 'Discount cannot be negative').max(100, 'Discount cannot exceed 100%').default(0),
   tax: z.coerce.number().min(0, 'Tax cannot be negative').max(100, 'Tax cannot exceed 100%').default(0),
   warehouse: z.string().trim().optional().or(z.literal('')),
+  mrp: z.coerce.number().min(0).optional().nullable(),
+  sellingPrice: z.coerce.number().min(0).optional().nullable(),
   batchNo: z.string().trim().optional().or(z.literal('')),
   expiryDate: z.coerce.date().optional().nullable(),
   remarks: z.string().trim().optional().or(z.literal('')),

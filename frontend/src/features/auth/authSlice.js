@@ -28,6 +28,11 @@ const authSlice = createSlice({
       state.token = null;
       clearPersistedAuth();
     },
+    // Refreshes role + permissions from GET /auth/me. State only — the login
+    // choice of local/session storage is left untouched.
+    setAccess(state, action) {
+      if (state.user) Object.assign(state.user, action.payload);
+    },
     setActiveOutlet(state, action) {
       if (state.user) {
         state.user.outletId = action.payload;
@@ -37,7 +42,9 @@ const authSlice = createSlice({
   },
 });
 
-export const { setCredentials, logout, setActiveOutlet } = authSlice.actions;
+export const {
+  setCredentials, logout, setActiveOutlet, setAccess,
+} = authSlice.actions;
 export default authSlice.reducer;
 
 export const selectCurrentUser = (state) => state.auth.user;

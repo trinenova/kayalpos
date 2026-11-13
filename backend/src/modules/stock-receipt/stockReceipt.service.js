@@ -1,5 +1,6 @@
 import { prisma } from '../../config/prisma.js';
 import { ApiError } from '../../middleware/errorHandler.js';
+import { receiveLot } from '../product-lot/productLot.service.js';
 
 const CODE_PREFIX = 'RCPT';
 const CODE_LENGTH = 5;
@@ -85,6 +86,8 @@ function computeItems(items) {
       batchNo: item.batchNo || null,
       expiryDate: item.expiryDate || null,
       remarks: item.remarks || null,
+      mrp: item.mrp == null || item.mrp === '' ? null : Number(item.mrp),
+      sellingPrice: item.sellingPrice == null || item.sellingPrice === '' ? null : Number(item.sellingPrice),
     };
   });
 
@@ -144,6 +147,36 @@ function receivedFields(status, actor, existing) {
   return { receivedBy: actor?.name || 'Admin', receivedOn: new Date() };
 }
 
+// Receiving a receipt is the stock-in event: every line becomes a FIFO purchase
+// lot (own MRP / purchase price / selling price) and adds to Product.availableQty.
+// Done once, when the receipt first reaches 'received'. Lines whose item code
+// matches no product are skipped (the grid is free text). MRP / selling price
+// default to the product's current ones when the line leaves them blank.
+async function receiveLotsForReceipt(tx, tenantId, receipt) {
+  const codes = [...new Set(receipt.items.map((i) => i.itemCode))];
+  const products = await tx.product.findMany({ where: { tenantId, code: { in: codes } } });
+  const byCode = new Map(products.map((p) => [p.code, p]));
+  for (const [index, item] of receipt.items.entries()) {
+    const product = byCode.get(item.itemCode);
+    const qty = Number(item.receivedQty);
+    if (!product || !(qty > 0)) continue; // eslint-disable-line no-continue
+    // eslint-disable-next-line no-await-in-loop
+    await receiveLot(tx, {
+      tenantId,
+      productId: product.id,
+      lotNo: item.batchNo || `${receipt.code}-${index + 1}`,
+      source: 'RECEIPT',
+      sourceRef: receipt.code,
+      receivedAt: receipt.receivedOn || new Date(),
+      mrp: item.mrp != null ? Number(item.mrp) : Number(product.mrp),
+      purchasePrice: Number(item.unitCost),
+      sellingPrice: item.sellingPrice != null ? Number(item.sellingPrice) : Number(product.salePrice),
+      qty,
+      expiryDate: item.expiryDate || null,
+    });
+  }
+}
+
 export async function createStockReceipt(tenantId, data, actor) {
   return prisma.$transaction(async (tx) => {
     const code = data.code || (await nextReceiptCode(tenantId));
@@ -178,6 +211,7 @@ export async function createStockReceipt(tenantId, data, actor) {
       },
       include: { items: true },
     });
+    if (status === 'received') await receiveLotsForReceipt(tx, tenantId, row);
     return row;
   });
 }
@@ -219,6 +253,8 @@ export async function updateStockReceipt(tenantId, id, data, actor) {
       },
       include: { items: true },
     });
+    // Stock-in happens once: only on the first transition to 'received'.
+    if (status === 'received' && existing.status !== 'received') await receiveLotsForReceipt(tx, tenantId, row);
     return row;
   });
 }

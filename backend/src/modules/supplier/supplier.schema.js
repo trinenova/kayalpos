@@ -17,8 +17,11 @@ const supplierBaseSchema = z.object({
   phone: z.string().trim().optional().nullable(),
   email: z.string().trim().email('Enter a valid email').optional().or(z.literal('')).nullable(),
   gstNo: z.string().trim().optional().nullable(),
+  country: z.string().trim().max(100, 'Country cannot exceed 100 characters').optional().nullable(),
   city: z.string().trim().optional().nullable(),
   state: z.string().trim().optional().nullable(),
+  address: z.string().trim().max(500, 'Address cannot exceed 500 characters').optional().nullable(),
+  remarks: z.string().trim().max(500, 'Remarks cannot exceed 500 characters').optional().nullable(),
   paymentTerms: z.string().trim().max(50, 'Payment terms cannot exceed 50 characters').optional().nullable(),
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
 });

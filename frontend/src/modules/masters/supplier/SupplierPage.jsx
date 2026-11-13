@@ -23,6 +23,9 @@ import { formatNumber, formatCurrency } from '../../../utils/format';
 import SupplierTable from './components/SupplierTable';
 import SupplierFormDialog from './components/SupplierFormDialog';
 import SupplierViewDialog from './components/SupplierViewDialog';
+import ExcelImportDialog from '../../../components/common/ExcelImportDialog';
+import { downloadSupplierTemplate, parseSupplierRows, exportSuppliers } from './supplierExcel';
+import { useImportSuppliersMutation } from '../../../api/supplierApi';
 import { SUPPLIER_GROUP_OPTIONS, CITY_OPTIONS, STATE_OPTIONS } from './supplierMockData';
 import { useGetSuppliersQuery, useDeleteSupplierMutation } from '../../../api/supplierApi';
 
@@ -37,6 +40,9 @@ function toViewRow(row) {
     group: row.group || '',
     phone: row.phone || '',
     email: row.email || '',
+    address: row.address || '',
+    country: row.country || '',
+    remarks: row.remarks || '',
     city: row.city || '',
     state: row.state || '',
     gstNo: row.gstNo || '',
@@ -54,8 +60,8 @@ function toViewRow(row) {
  * api/supplierApi.js): list/search/status run server-side; Group/City/State/
  * GST-registered filters and the stat tiles are computed client-side over
  * whatever rows the current search/status filter returned — no backend
- * aggregation endpoint exists yet. Import/Export remain mocked — no bulk
- * endpoint exists for Supplier yet.
+ * aggregation endpoint exists yet. Import / Export / Download Template work
+ * on Excel files (see supplierExcel.js); export covers the rows currently shown.
  */
 export default function SupplierPage() {
   const dispatch = useAppDispatch();
@@ -69,6 +75,8 @@ export default function SupplierPage() {
   const [page, setPage] = useState(1);
   const [formDialog, setFormDialog] = useState({ open: false, mode: 'add', row: null });
   const [viewRow, setViewRow] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSuppliers] = useImportSuppliersMutation();
 
   const queryParams = {
     search: appliedSearch || undefined,
@@ -79,8 +87,14 @@ export default function SupplierPage() {
 
 
   const handleNewSupplier = () => setFormDialog({ open: true, mode: 'add', row: null });
-  const handleImport = () => dispatch(showToast('Import Suppliers is coming soon', 'info'));
-  const handleExport = () => dispatch(showToast('Export Suppliers is coming soon', 'info'));
+  const handleImport = () => setImportOpen(true);
+  const handleExport = () => {
+    if (!filteredRows.length) {
+      dispatch(showToast('There are no suppliers to export', 'info'));
+      return;
+    }
+    exportSuppliers(filteredRows);
+  };
   const handleSearch = () => setAppliedSearch(searchInput.trim().toLowerCase());
   const handleReset = () => {
     setSearchInput('');
@@ -258,6 +272,17 @@ export default function SupplierPage() {
         </Grid>
       </Grid>
 
+      <ExcelImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        title="Import Suppliers"
+        unitLabel="suppliers"
+        description="Upload an .xlsx, .xls or .csv file (use Download Template for the exact columns). Supplier Name is required. A row whose Supplier Code, GST No. or name matches an existing supplier updates it; other rows create new suppliers."
+        onDownloadTemplate={downloadSupplierTemplate}
+        parseRows={parseSupplierRows}
+        sendChunk={(rows) => importSuppliers({ rows }).unwrap()}
+        chunkSize={200}
+      />
       <SupplierFormDialog open={formDialog.open} mode={formDialog.mode} initialValues={formDialog.row} onClose={closeFormDialog} />
       <SupplierViewDialog
         open={Boolean(viewRow)}
