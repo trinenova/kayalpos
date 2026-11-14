@@ -2589,6 +2589,10 @@ model Company {
   // Just the uploaded logo file's name — same honest limitation as
   // Expense.attachmentName: no file-storage backend is wired up yet.
   logoName           String? @map("LogoName")
+  // The logo image itself as a small (<= ~300px) PNG data URL, resized in
+  // the browser before upload — printed above the company name on bill
+  // receipts. Stored inline (TEXT) so no file-storage backend is needed.
+  logoData           String? @map("LogoData")
   addressLine1       String? @map("AddressLine1")
   addressLine2       String? @map("AddressLine2")
   addressLine3       String? @map("AddressLine3")

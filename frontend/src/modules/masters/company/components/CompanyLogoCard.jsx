@@ -3,12 +3,12 @@ import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined';
 import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
 
 /**
- * "Company Logo" sidebar card — a colored initial badge stands in for the
- * actual uploaded logo image (no real asset to show for a mock company),
+ * "Company Logo" sidebar card — shows the saved logo image (`logoData`), or
+ * a colored initial badge when no logo has been uploaded yet,
  * with local-only Upload / Remove actions matching the reference's
  * button pair. `onUpload` receives the picked File; `onRemove` clears it.
  */
-export default function CompanyLogoCard({ companyName, logoName, onUpload, onRemove }) {
+export default function CompanyLogoCard({ companyName, logoName, logoData, onUpload, onRemove }) {
   const initial = (companyName || 'C').trim().charAt(0).toUpperCase();
 
   return (
@@ -16,6 +16,14 @@ export default function CompanyLogoCard({ companyName, logoName, onUpload, onRem
       <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>Company Logo</Typography>
 
       <Stack spacing={1.5} sx={{ alignItems: 'center' }}>
+        {logoData ? (
+          <Box
+            component="img"
+            src={logoData}
+            alt="Company logo"
+            sx={{ width: 160, height: 160, objectFit: 'contain', borderRadius: 2, border: '1px solid', borderColor: 'divider', bgcolor: '#fff' }}
+          />
+        ) : (
         <Box
           sx={{
             width: 160,
@@ -33,6 +41,7 @@ export default function CompanyLogoCard({ companyName, logoName, onUpload, onRem
         >
           {initial}
         </Box>
+        )}
 
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           Recommended size 200 x 200 px

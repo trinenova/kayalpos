@@ -23,6 +23,7 @@ import {
 } from '../../../api/companyApi';
 
 import CompanyLogoCard from './components/CompanyLogoCard';
+import { logoFileToDataUrl, DEFAULT_COMPANY_LOGO_PATH } from './logoImage';
 import RegisteredAddressCard from './components/RegisteredAddressCard';
 import ContactPersonTable from './components/ContactPersonTable';
 import ContactPersonFormDialog from './components/ContactPersonFormDialog';
@@ -63,6 +64,7 @@ export default function CompanyPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [moreAnchor, setMoreAnchor] = useState(null);
   const [logoName, setLogoName] = useState('');
+  const [logoData, setLogoData] = useState('');
   const [contactDialog, setContactDialog] = useState({ open: false, mode: 'add', row: null });
 
   const { data: profile, isLoading, isFetching } = useCompanyProfileQuery();
@@ -86,6 +88,7 @@ export default function CompanyPage() {
     if (!isFetching) {
       reset(companyProfileToFormValues(profile));
       setLogoName(profile?.logoName || '');
+      setLogoData(profile?.logoData || '');
     }
   }, [profile, isFetching, reset]);
 
@@ -98,13 +101,23 @@ export default function CompanyPage() {
     setMoreAnchor(null);
     dispatch(showToast(`${label} is coming soon`, 'info'));
   };
-  const handleLogoUpload = (file) => setLogoName(file?.name || '');
-  const handleLogoRemove = () => setLogoName('');
+  const handleLogoUpload = async (file) => {
+    if (!file) return;
+    try {
+      // Resized + flattened to a small PNG so it stays light to store and
+      // prints cleanly on the thermal receipt.
+      setLogoData(await logoFileToDataUrl(file));
+      setLogoName(file.name);
+    } catch {
+      dispatch(showToast('Could not read that image. Please choose a PNG or JPG file.', 'error'));
+    }
+  };
+  const handleLogoRemove = () => { setLogoName(''); setLogoData(''); };
 
   const onSave = handleSubmit(async (values) => {
     setIsSaving(true);
     try {
-      await saveCompanyProfile(companyFormValuesToPayload(values, logoName)).unwrap();
+      await saveCompanyProfile(companyFormValuesToPayload(values, logoName, logoData)).unwrap();
       setIsEditing(false);
       dispatch(showToast(`${values.companyName} saved successfully`, 'success'));
     } catch (err) {
@@ -279,6 +292,7 @@ export default function CompanyPage() {
                   <CompanyLogoCard
                     companyName={profile?.displayName || profile?.companyName}
                     logoName={logoName}
+                    logoData={logoData || DEFAULT_COMPANY_LOGO_PATH}
                     onUpload={handleLogoUpload}
                     onRemove={handleLogoRemove}
                   />

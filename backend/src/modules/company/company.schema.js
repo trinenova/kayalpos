@@ -24,6 +24,8 @@ export const companyProfileSchema = z.object({
   mobile: z.string().trim().optional(),
   fax: z.string().trim().optional(),
   logoName: z.string().trim().optional(),
+  // PNG/JPEG data URL of the logo (null clears it). Capped well under the 2mb JSON body limit.
+  logoData: z.string().max(1_500_000).regex(/^data:image\//, 'Logo must be an image').nullable().optional(),
   addressLine1: z.string().trim().optional(),
   addressLine2: z.string().trim().optional(),
   addressLine3: z.string().trim().optional(),

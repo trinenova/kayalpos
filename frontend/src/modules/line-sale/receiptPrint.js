@@ -1,4 +1,6 @@
 import { PAYMENT_METHODS } from './lineSaleMockData';
+import { defaultCompanyLogoUrl } from '../masters/company/logoImage';
+import { silentPrintHtml } from './qzPrint';
 
 const money = (n) => (Number(n) || 0).toFixed(2);
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -9,6 +11,62 @@ const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 // name containing '<' or '&' breaking the markup).
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Address block, printed as:
+//   No:11/1062,Ground Floor Kanjikode Road,
+//   Pampampalla Pudussery, Palakkad,
+//   Kerala - 678621
+// The five address fields (Line 1-4, Landmark) are read as one address, so
+// it prints the same whether it was typed into one field or spread over
+// several. It is split where a comma is followed by a space (so the door
+// number "No:11/1062,Ground Floor" stays together). A bare pincode is
+// joined to the part before it with " - ". The first part is the first
+// line, the last part (state - pincode) is the last line, and everything
+// in between (area, city) shares the middle line.
+const buildAddressHtml = (company) => {
+  const clean = (v) => String(v ?? '').trim().replace(/^[,\s]+|[,\s]+$/g, '');
+  const parts = [];
+  [company?.addressLine1, company?.addressLine2, company?.addressLine3, company?.addressLine4, company?.addressLandmark]
+    .flatMap((field) => String(field ?? '').split(/,\s+|,(?=\s*-)/))
+    .map(clean)
+    .filter(Boolean)
+    .forEach((part) => {
+      const pin = part.match(/^-?\s*(\d{6})$/);
+      if (pin && parts.length) parts[parts.length - 1] = `${parts[parts.length - 1].replace(/\s*-$/, '')} - ${pin[1]}`;
+      else parts.push(part);
+    });
+
+  const lines = [];
+  if (parts.length >= 3) {
+    lines.push(`${parts[0]},`);
+    lines.push(`${parts.slice(1, -1).join(', ')},`);
+    lines.push(parts[parts.length - 1]);
+  } else if (parts.length === 2) {
+    lines.push(`${parts[0]},`, parts[1]);
+  } else if (parts.length === 1) {
+    lines.push(parts[0]);
+  }
+  return lines.map((l) => `<div class="center">${esc(l)}</div>`).join('\n  ');
+};
+
+// Header pieces shared by the bill and return slips.
+// State + pincode print together on one line ("Tamil Nadu - 600001"); the
+// pincode is only appended when the company profile has one.
+const buildLocationLine = (company) => {
+  const pin = company?.pincode || company?.pinCode || company?.postalCode || company?.zipCode;
+  const state = company?.state;
+  if (state && pin) return `${state} - ${pin}`;
+  return state || pin || '';
+};
+
+// Logo above the company name, taken from the Company master's saved logo
+// image (`logoData`, a data URL). Nothing is printed when no logo is saved
+// (`logoName` alone is just a file name). Falls back to the bundled SMA logo.
+const buildLogoHtml = (company) => {
+  const src = company?.logoData || company?.logoUrl || company?.logoDataUrl || company?.logo || defaultCompanyLogoUrl();
+  if (!src || !/^(data:image\/|https?:\/\/|\/)/.test(String(src))) return '';
+  return `<div class="center"><img class="logo" src="${esc(src)}" alt="" /></div>`;
+};
 
 /**
  * Builds the printable HTML for a thermal-style bill receipt (80mm roll
@@ -65,9 +123,7 @@ export function buildReceiptHtml({
       </tr>`;
     }).join('');
 
-  const addressLines = [
-    company?.addressLine1, company?.addressLine2, company?.addressLine3, company?.addressLine4, company?.addressLandmark,
-  ].filter(Boolean).join(', ');
+  const locationLine = buildLocationLine(company);
   const phoneLine = [company?.phone, company?.mobile].filter(Boolean).join(', ');
 
   return `<!doctype html>
@@ -82,14 +138,17 @@ export function buildReceiptHtml({
     font-family: 'Courier New', Courier, monospace;
     font-size: 12px;
     color: #000;
+    font-weight: 700;
+    -webkit-text-stroke: 0.25px #000;
     width: 76mm;
     margin: 0 auto;
   }
+  .logo { max-width: 40mm; max-height: 20mm; margin-bottom: 2px; filter: grayscale(1) contrast(1.4); }
   .center { text-align: center; }
   .bold { font-weight: 700; }
-  .divider { border-top: 1px dashed #000; margin: 6px 0; }
+  .divider { border-top: 1.5px dashed #000; margin: 6px 0; }
   table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 1px 2px; text-align: left; font-size: 11px; }
+  th, td { padding: 1px 2px; text-align: left; font-size: 11px; font-weight: 700; }
   td.num, th.num { text-align: right; }
   .row { display: flex; justify-content: space-between; }
   .biz-name { font-size: 14px; }
@@ -97,8 +156,10 @@ export function buildReceiptHtml({
 </style>
 </head>
 <body>
+  ${buildLogoHtml(company)}
   <div class="center bold biz-name">${esc(company?.companyName || company?.displayName || '—')}</div>
-  ${addressLines ? `<div class="center">${esc(addressLines)}</div>` : ''}
+${buildAddressHtml(company)}
+  ${locationLine ? `<div class="center">${esc(locationLine)}</div>` : ''}
   ${phoneLine ? `<div class="center">Ph: ${esc(phoneLine)}</div>` : ''}
   ${company?.gstin ? `<div class="center">GSTIN: ${esc(company.gstin)}</div>` : ''}
   ${company?.fssaiNo ? `<div class="center">FSSAI No: ${esc(company.fssaiNo)}</div>` : ''}
@@ -146,8 +207,10 @@ export function buildReceiptHtml({
   <div class="divider"></div>
   <div class="center footer">
     Inclusive of all Taxes<br />
-    Thank You! Visit Again!
+    Thank You! Visit Again!<br />
+    Powered by Techconz Nexora Pvt Ltd!
   </div>
+  
 </body>
 </html>`;
 }
@@ -161,7 +224,7 @@ export function buildReceiptHtml({
  * that blocker since it isn't a new window, and is removed from the DOM
  * right after the print dialog closes.
  */
-export function printHtml(html) {
+function browserPrintHtml(html) {
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
   iframe.style.right = '0';
@@ -178,13 +241,32 @@ export function printHtml(html) {
   iframe.onload = () => {
     const win = iframe.contentWindow;
     win.focus();
-    win.print();
+    // The logo is a normal URL when no uploaded logo exists, so wait for
+    // images to finish (or fail) before opening the print dialog — otherwise
+    // the logo can be missing from the printout.
+    const pending = Array.from(win.document.images || [])
+      .filter((img) => !img.complete)
+      .map((img) => new Promise((done) => { img.onload = done; img.onerror = done; }));
+    Promise.race([Promise.all(pending), new Promise((done) => setTimeout(done, 3000))])
+      .then(() => win.print());
     // No reliable onafterprint across browsers for an iframe's own print
     // dialog, so the iframe is cleaned up on a short delay instead of left
     // in the DOM indefinitely.
     setTimeout(cleanup, 1000);
   };
   iframe.srcdoc = html;
+  return true;
+}
+
+/**
+ * Prints a receipt: straight to the printer (no preview) through QZ Tray when
+ * it is installed on this PC, otherwise through the browser's print dialog.
+ * Returns true right away; the fallback happens in the background.
+ */
+export function printHtml(html) {
+  silentPrintHtml(html).then((done) => {
+    if (!done) browserPrintHtml(html);
+  });
   return true;
 }
 
@@ -234,9 +316,7 @@ export function buildReturnReceiptHtml({
       </tr>`;
     }).join('');
 
-  const addressLines = [
-    company?.addressLine1, company?.addressLine2, company?.addressLine3, company?.addressLine4, company?.addressLandmark,
-  ].filter(Boolean).join(', ');
+  const locationLine = buildLocationLine(company);
   const phoneLine = [company?.phone, company?.mobile].filter(Boolean).join(', ');
   const refundLine = refundMode === 'credit-note'
     ? 'Credit Note issued'
@@ -250,12 +330,13 @@ export function buildReturnReceiptHtml({
 <style>
   @page { size: 80mm auto; margin: 2mm; }
   * { box-sizing: border-box; }
-  body { font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #000; width: 76mm; margin: 0 auto; }
+  body { font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #000; font-weight: 700; -webkit-text-stroke: 0.25px #000; width: 76mm; margin: 0 auto; }
+  .logo { max-width: 40mm; max-height: 20mm; margin-bottom: 2px; filter: grayscale(1) contrast(1.4); }
   .center { text-align: center; }
   .bold { font-weight: 700; }
-  .divider { border-top: 1px dashed #000; margin: 6px 0; }
+  .divider { border-top: 1.5px dashed #000; margin: 6px 0; }
   table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 1px 2px; text-align: left; font-size: 11px; }
+  th, td { padding: 1px 2px; text-align: left; font-size: 11px; font-weight: 700; }
   td.num, th.num { text-align: right; }
   .row { display: flex; justify-content: space-between; }
   .biz-name { font-size: 14px; }
@@ -263,8 +344,10 @@ export function buildReturnReceiptHtml({
 </style>
 </head>
 <body>
+  ${buildLogoHtml(company)}
   <div class="center bold biz-name">${esc(company?.companyName || company?.displayName || '—')}</div>
-  ${addressLines ? `<div class="center">${esc(addressLines)}</div>` : ''}
+${buildAddressHtml(company)}
+  ${locationLine ? `<div class="center">${esc(locationLine)}</div>` : ''}
   ${phoneLine ? `<div class="center">Ph: ${esc(phoneLine)}</div>` : ''}
   ${company?.gstin ? `<div class="center">GSTIN: ${esc(company.gstin)}</div>` : ''}
 

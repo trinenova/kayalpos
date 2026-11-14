@@ -97,13 +97,15 @@ export default function SalesReturnPage() {
   }, [originalInvoice, cart]);
 
   const totals = useMemo(() => {
+    // Same proration the server applies: the original bill's discount share.
+    const ratio = Number(originalInvoice?.discountRatio) || 0;
     const subTotal = cart.reduce((sum, line) => sum + line.qty * line.rate, 0);
-    const discountAmount = 0;
+    const discountAmount = subTotal * ratio;
     const taxable = Math.max(subTotal - discountAmount, 0);
-    const tax = cart.reduce((sum, line) => sum + line.qty * line.rate * line.taxRate, 0);
+    const tax = cart.reduce((sum, line) => sum + line.qty * line.rate * (1 - ratio) * line.taxRate, 0);
     const grandTotal = taxable + tax;
     return { subTotal, discountAmount, tax, grandTotal };
-  }, [cart]);
+  }, [cart, originalInvoice]);
 
   const handleOpenFindInvoice = () => {
     setDialogError('');

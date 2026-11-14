@@ -34,7 +34,7 @@ export default function ItemChoiceDialog({ choice, onClose, onPick }) {
       </DialogTitle>
       <DialogContent dividers>
         {candidates.map(({ product, lots }, i) => {
-          const out = Number(product.availableQty) <= 0;
+          const out = false; // stock is not enforced — items can be sold at 0 stock
           return (
             <Box key={product.code} sx={{ mb: i === candidates.length - 1 ? 0 : 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>

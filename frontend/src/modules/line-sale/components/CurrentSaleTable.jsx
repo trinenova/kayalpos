@@ -1,13 +1,15 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  Paper, Stack, Box, Typography, Chip, IconButton, TextField, MenuItem,
+  Paper, Stack, Box, Typography, Chip, IconButton, TextField, MenuItem, Button,
 } from '@mui/material';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutlineOutlined';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutlineOutlined';
 import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
+import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined';
 
 import DataTable from '../../../components/common/DataTable';
 import { formatCurrency } from '../../../utils/format';
+import RecentSalesDialog from './RecentSalesDialog';
 import ItemSearchCell, { BarcodeCell, useItemSearchIndex } from './ItemSearchCell';
 
 // Sentinel row appended after the last real line — it is the "new item" row.
@@ -30,6 +32,7 @@ export default function CurrentSaleTable({
   counters = [], counter = '', onCounterChange,
 }) {
   const index = useItemSearchIndex(products);
+  const [recentOpen, setRecentOpen] = useState(false);
 
   const rows = useMemo(() => [...lines, BLANK_ROW], [lines]);
 
@@ -120,6 +123,15 @@ export default function CurrentSaleTable({
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 2.5, pt: 2, pb: 1.5 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>Current Sale</Typography>
         <Chip label={`${lines.length} ${lines.length === 1 ? 'Item' : 'Items'}`} size="small" sx={{ fontWeight: 700 }} />
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<HistoryOutlinedIcon fontSize="small" />}
+          onClick={() => setRecentOpen(true)}
+          sx={{ ml: 'auto !important', whiteSpace: 'nowrap', fontWeight: 700 }}
+        >
+          Recent Sales
+        </Button>
         {onCounterChange && (
           // Counter = Item Group: limits the item / barcode search to that
           // counter's products ("All Counters" = no limit).
@@ -129,7 +141,7 @@ export default function CurrentSaleTable({
             label="Counter"
             value={counter}
             onChange={(e) => onCounterChange(e.target.value)}
-            sx={{ ml: 'auto !important', minWidth: 200 }}
+            sx={{ minWidth: 200 }}
           >
             <MenuItem value="">All Counters</MenuItem>
             {counters.map((name) => <MenuItem key={name} value={name}>{name}</MenuItem>)}
@@ -145,6 +157,7 @@ export default function CurrentSaleTable({
           fitContainer
         />
       </Box>
+      <RecentSalesDialog open={recentOpen} onClose={() => setRecentOpen(false)} />
     </Paper>
   );
 }

@@ -148,7 +148,7 @@ export function companyProfileToFormValues(profile) {
 // `logoName` state) is folded in here right before the request, same
 // "just the file name, no real upload backend" pattern as Expense's
 // `attachmentName`.
-export function companyFormValuesToPayload(values, logoName) {
+export function companyFormValuesToPayload(values, logoName, logoData) {
   return {
     companyCode: values.companyCode.trim(),
     companyName: values.companyName.trim(),
@@ -170,6 +170,8 @@ export function companyFormValuesToPayload(values, logoName) {
     fax: values.fax?.trim() || undefined,
 
     logoName: logoName?.trim() || undefined,
+    // null (not undefined) so removing the logo actually clears it on the server.
+    logoData: logoData || null,
 
     addressLine1: values.addressLine1?.trim() || undefined,
     addressLine2: values.addressLine2?.trim() || undefined,

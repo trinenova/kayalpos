@@ -85,21 +85,16 @@ export const createProductSchema = z.object({
   manageMethod: z.string().trim().optional(),
   isExcisable: z.boolean().optional(),
   isGst: z.boolean().optional(),
-  // Read-only on the form (shown from the product's Price List) and not
-  // required: they are never typed here, so a blank is always valid.
-  salePrice: z.string().trim().optional(),
-  mrp: z.string().trim().optional(),
+  // Required on the Sales tab.
+  salePrice: z.string().trim().min(1, 'Sale price is required')
+    .refine((v) => !Number.isNaN(Number(v)) && Number(v) >= 0, 'Enter a valid non-negative amount'),
+  mrp: z.string().trim().min(1, 'MRP is required')
+    .refine((v) => !Number.isNaN(Number(v)) && Number(v) >= 0, 'Enter a valid non-negative amount'),
   // Blank is allowed (saved as 0). It lives on the Inventory tab, so a
   // "required" error here used to block Save/Update with nothing visible.
   availableQty: z.string().trim()
     .refine((v) => v === '' || /^\d+$/.test(v), 'Enter a whole, non-negative number'),
   status: z.string().trim().min(1, 'Select a status'),
-}).superRefine((values, ctx) => {
-  // "Item Category *" on the General tab — at least one of Excisable/GST
-  // must be checked.
-  if (!values.isExcisable && !values.isGst) {
-    ctx.addIssue({ code: 'custom', path: ['isGst'], message: 'Select at least one item category' });
-  }
 });
 
 export const createProductDefaultValues = {
@@ -218,9 +213,8 @@ export function productFormValuesToPayload(values) {
     manageMethod: values.manageMethod || undefined,
     isExcisable: Boolean(values.isExcisable),
     isGst: Boolean(values.isGst),
-    // salePrice / mrp are intentionally not sent: the form only displays the
-    // price-list price, so saving a product must never overwrite them (a new
-    // product defaults to 0 on the server; an update keeps the stored value).
+    salePrice: Number(values.salePrice),
+    mrp: Number(values.mrp),
     availableQty: Number(values.availableQty || 0),
     status: values.status === 'Inactive' ? 'INACTIVE' : 'ACTIVE',
   };

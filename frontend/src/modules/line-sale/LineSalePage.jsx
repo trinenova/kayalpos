@@ -460,15 +460,7 @@ export default function LineSalePage() {
     setCart((prev) => {
       const existing = prev.find((line) => line.code === code);
       const nextQty = (existing?.qty || 0) + 1;
-      if (nextQty > item.stock) {
-        dispatch(
-          showToast(
-            `Only ${item.stock} ${item.uom} of ${item.name} available`,
-            "warning",
-          ),
-        );
-        return prev;
-      }
+      // No stock validation — items can be sold even when stock is 0.
       if (existing) {
         return prev.map((line) =>
           line.code === code ? { ...line, qty: nextQty } : line,
@@ -496,16 +488,12 @@ export default function LineSalePage() {
     if (oldCode === newCode) return;
     const item = productByCode[newCode];
     if (!item) return;
-    if (item.stock <= 0) {
-      dispatch(showToast(`${item.name} is out of stock`, "warning"));
-      return;
-    }
     setCart((prev) => {
       const old = prev.find((line) => line.code === oldCode);
       if (!old) return prev;
       const dup = prev.find((line) => line.code === newCode);
       if (dup) {
-        const merged = Math.min(dup.qty + old.qty, item.stock);
+        const merged = dup.qty + old.qty;
         return prev
           .filter((line) => line.code !== oldCode)
           .map((line) => (line.code === newCode ? { ...line, qty: merged } : line));
@@ -515,7 +503,7 @@ export default function LineSalePage() {
           ? {
               id: item.id,
               code: newCode,
-              qty: Math.min(old.qty, item.stock),
+              qty: old.qty,
               name: item.name,
               uom: item.uom,
               price: item.price,
@@ -528,17 +516,8 @@ export default function LineSalePage() {
 
   const handleQtyChange = (code, qty) => {
     const item = productByCode[code];
-    const clamped = item
-      ? Math.min(Math.max(1, qty), Math.max(item.stock, 1))
-      : qty;
-    if (item && qty > item.stock) {
-      dispatch(
-        showToast(
-          `Only ${item.stock} ${item.uom} of ${item.name} available`,
-          "warning",
-        ),
-      );
-    }
+    // Stock is not enforced — only keep qty at 1 or more.
+    const clamped = Math.max(1, qty);
     setCart((prev) =>
       prev.map((line) =>
         line.code === code ? { ...line, qty: clamped } : line,
@@ -677,18 +656,17 @@ export default function LineSalePage() {
       (l) =>
         l.live &&
         (!l.live.active ||
-          l.live.price !== l.price ||
-          l.live.availableQty < l.qty),
+          l.live.price !== l.price),
     );
     if (changed.length > 0) {
       dispatch(
         showToast(
-          `${changed.length} item${changed.length === 1 ? "" : "s"} changed since this bill was held (price or stock): ${changed
+          `${changed.length} item${changed.length === 1 ? "" : "s"} changed since this bill was held (price): ${changed
             .map((l) => l.name)
             .slice(0, 3)
             .join(
               ", ",
-            )}${changed.length > 3 ? "\u2026" : ""}. Prices and stock are re-checked when you pay.`,
+            )}${changed.length > 3 ? "\u2026" : ""}. Prices are re-checked when you pay.`,
           "warning",
         ),
       );
@@ -905,7 +883,7 @@ export default function LineSalePage() {
     }
   };
 
-  // F9 = Pay & Print, F10 = Print Invoice (payment step only). A ref keeps
+  // Enter or F9 = Pay & Print, F10 = Print Invoice (payment step only). A ref keeps
   // the listener pointing at the latest handlers without re-binding.
   const shortcutRef = useRef({});
   shortcutRef.current = {
@@ -924,6 +902,23 @@ export default function LineSalePage() {
     const onEnter = (e) => {
       if (e.key !== "Enter" || e.repeat) return;
       const s = shortcutRef.current;
+      // Payment step: Enter = Pay & Print (same as F9). Ignored while a
+      // dialog/dropdown is open, on a focused button/link (Enter already
+      // activates that), or while a payment is already in flight.
+      if (s.step === "payment") {
+        if (s.blocked || s.busy) return;
+        const target = e.target;
+        if (
+          target instanceof HTMLElement &&
+          target.closest(
+            '[role="dialog"], [role="listbox"], [role="menu"], button, a, textarea, [role="combobox"]',
+          )
+        )
+          return;
+        e.preventDefault();
+        s.pay();
+        return;
+      }
       if (s.step !== "billing" || !s.hasItems || s.blocked) return;
       const el = e.target;
       if (!(el instanceof HTMLElement)) return;

@@ -9,6 +9,15 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
+// Share of each line's value that was discounted on the original bill. The bill
+// discount and GST were computed on the whole bill, so a return must refund the
+// same proportion — otherwise a discounted sale would be over-refunded.
+function discountRatioOf(sale) {
+  const sub = Number(sale.subTotal || 0);
+  const disc = Number(sale.discountAmount || 0);
+  return sub > 0 ? Math.min(Math.max(disc / sub, 0), 1) : 0;
+}
+
 function startOfToday() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -109,6 +118,7 @@ export async function lookupOriginalInvoice(tenantId, billNo) {
     customerId: sale.customerId,
     customerName: sale.customerName,
     alreadyRefunded: round2(Number(refundedAgg._sum.grandTotal || 0)),
+    discountRatio: discountRatioOf(sale),
     items,
   };
 }
@@ -151,8 +161,9 @@ export async function createSalesReturn(tenantId, data, actor) {
     });
 
     const subTotal = round2(lineData.reduce((sum, line) => sum + line.amount, 0));
-    const taxAmount = round2(lineData.reduce((sum, line) => sum + line.amount * line.taxRate, 0));
-    const discountAmount = 0;
+    const discountRatio = discountRatioOf(sale);
+    const discountAmount = round2(subTotal * discountRatio);
+    const taxAmount = round2(lineData.reduce((sum, line) => sum + line.amount * (1 - discountRatio) * line.taxRate, 0));
     const grandTotal = round2(subTotal - discountAmount + taxAmount);
 
     const returnNo = await nextReturnNoWithin(tx, tenantId);

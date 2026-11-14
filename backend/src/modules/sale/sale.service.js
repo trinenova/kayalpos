@@ -90,9 +90,7 @@ export async function createSale({
       const product = productById.get(line.productId);
       if (!product) throw new ApiError(400, 'One of the items in this sale no longer exists');
       if (product.status !== 'ACTIVE') throw new ApiError(400, `${product.name} is inactive and cannot be sold`);
-      if (product.availableQty < wantedQty.get(line.productId)) {
-        throw new ApiError(400, `Insufficient stock for ${product.name} — only ${product.availableQty} ${product.uom} available`);
-      }
+      // Stock is intentionally not validated: bills go through even at 0 stock.
     });
 
     // FIFO: each cart line is split across the oldest purchase lots first. Every
@@ -158,14 +156,11 @@ export async function createSale({
     // touching the same products can't deadlock each other.
     const decrements = [...wantedQty.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     for (const [productId, qty] of decrements) {
-      const result = await tx.product.updateMany({
-        where: { id: productId, tenantId, availableQty: { gte: qty } },
+      // Unconditional decrement — stock may go negative (no stock validation).
+      await tx.product.updateMany({
+        where: { id: productId, tenantId },
         data: { availableQty: { decrement: qty } },
       });
-      if (result.count !== 1) {
-        const name = productById.get(productId)?.name || 'An item';
-        throw new ApiError(409, `Stock for ${name} changed while this bill was being saved — nothing was charged. Review the cart and try again.`);
-      }
     }
 
     // Show the next unit's lot price/MRP on the product from now on.
@@ -752,4 +747,39 @@ export async function getOtherPaymentsReport(tenantId, outletId, params = {}) {
       { id: 'upi', label: 'UPI', value: upi, color: '#8B5CF6' },
     ],
   };
+}
+
+/**
+ * Line Sale "Recent Sales" popup: the outlet's most recent bills (newest
+ * first), default 10.
+ */
+export async function getRecentSales(tenantId, outletId, limit = 10) {
+  const rows = await prisma.tczOpos.findMany({
+    where: { tenantId, ...(outletId ? { outletId } : {}) },
+    orderBy: { createDate: 'desc' },
+    take: Math.min(Math.max(Number(limit) || 10, 1), 50),
+    select: {
+      docNum: true, customerName: true, payMode: true, grandTotal: true, createDate: true,
+      lines: { select: { quantity: true } },
+    },
+  });
+  return rows.map((r) => ({
+    billNo: r.docNum,
+    customerName: r.customerName || 'Walk-in Customer',
+    paymentMethod: r.payMode,
+    items: r.lines.length,
+    qty: r.lines.reduce((sum, l) => sum + Number(l.quantity || 0), 0),
+    amount: Math.round(Number(r.grandTotal || 0) * 100) / 100,
+    createdAt: r.createDate,
+  }));
+}
+
+/** One bill (header + lines) by bill number — "Recent Sales" View / Print. */
+export async function getSaleByBillNo(tenantId, outletId, billNo) {
+  const sale = await prisma.tczOpos.findFirst({
+    where: { tenantId, docNum: billNo, ...(outletId ? { outletId } : {}) },
+    include: { lines: { orderBy: { lineId: 'asc' } } },
+  });
+  if (!sale) throw new ApiError(404, 'Bill not found');
+  return toSaleDto(sale, sale.lines);
 }

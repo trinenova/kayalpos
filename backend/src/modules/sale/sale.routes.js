@@ -5,7 +5,7 @@ import {
   createSaleSchema, cashSalesQuerySchema, cardSalesQuerySchema, upiSalesQuerySchema, otherPaymentsQuerySchema,
 } from './sale.schema.js';
 import {
-  createSale, nextBillNo, getDiscountSummary,
+  createSale, nextBillNo, getDiscountSummary, getRecentSales, getSaleByBillNo,
   getSalesOverviewSummary, getCustomerPurchaseSummaries, getCustomerPurchaseSummary,
   getCashSalesReport, getCardSalesReport, getUpiSalesReport, getOtherPaymentsReport,
 } from './sale.service.js';
@@ -19,6 +19,26 @@ router.get('/next-bill-no', async (req, res, next) => {
   try {
     const billNo = await nextBillNo(req.user.tenantId);
     res.json({ success: true, data: { billNo } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Line Sale "Recent Sales" popup — the outlet's last 10 bills.
+router.get('/recent', async (req, res, next) => {
+  try {
+    const data = await getRecentSales(req.user.tenantId, req.user.outletId, 10);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Full bill for "Recent Sales" View / Print.
+router.get('/bill/:billNo', async (req, res, next) => {
+  try {
+    const data = await getSaleByBillNo(req.user.tenantId, req.user.outletId, req.params.billNo);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }

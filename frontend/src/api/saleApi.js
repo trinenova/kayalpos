@@ -18,6 +18,18 @@ const saleApi = baseApi.injectEndpoints({
       // next number as soon as the current bill is actually saved.
       providesTags: [{ type: 'Sale', id: 'NEXT' }],
     }),
+    // Last 10 bills for the Line Sale "Recent Sales" popup. Refetched after
+    // every sale because CreateSale invalidates the 'Sale' NEXT tag below.
+    RecentSales: builder.query({
+      query: () => '/sales/recent',
+      transformResponse: (response) => response.data,
+      providesTags: [{ type: 'Sale', id: 'NEXT' }],
+    }),
+    // One bill's full detail (lines etc.) for Recent Sales View / Print.
+    BillDetail: builder.query({
+      query: (billNo) => `/sales/bill/${encodeURIComponent(billNo)}`,
+      transformResponse: (response) => response.data,
+    }),
     CreateSale: builder.mutation({
       query: (body) => ({ url: '/sales', method: 'POST', body }),
       transformResponse: (response) => response.data,
@@ -127,3 +139,5 @@ export const useCashSalesReportQuery = saleApi.useCashSalesReportQuery;
 export const useCardSalesReportQuery = saleApi.useCardSalesReportQuery;
 export const useUpiSalesReportQuery = saleApi.useUpiSalesReportQuery;
 export const useOtherPaymentsReportQuery = saleApi.useOtherPaymentsReportQuery;
+export const useRecentSalesQuery = saleApi.useRecentSalesQuery;
+export const useLazyBillDetailQuery = saleApi.useLazyBillDetailQuery;
