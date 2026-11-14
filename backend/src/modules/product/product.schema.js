@@ -56,12 +56,46 @@ const noDefault = (schema) => schema.optional();
 export const createProductSchema = z.object(productShape(withDefault));
 export const updateProductSchema = z.object(productShape((schema) => noDefault(schema))).partial();
 
-// One row of a bulk Excel/CSV import — same shape as create, but every
-// numeric field arrives as whatever Excel/SheetJS produced (string or
-// number) and blank cells should fall back to defaults rather than fail
-// validation outright, since spreadsheets are inherently messier than a
-// hand-built form payload.
-export const bulkProductRowSchema = createProductSchema;
+// One row of a bulk Excel/CSV import. Imports are deliberately lenient: no
+// per-field validation rules apply. Whatever the sheet gives is accepted and
+// coerced (bad/blank numbers -> 0, any status text other than "inactive" ->
+// ACTIVE, decimals in qty are rounded). Only the columns actually present in
+// the row are returned, so re-importing a sheet with fewer columns never wipes
+// the other fields of an existing product. Missing Group/UOM fall back to
+// 'General'/'PCS' (the database needs a value), and a missing Name falls back
+// to the code/barcode/short id.
+const STRING_FIELDS = [
+  'code', 'shortId', 'name', 'foreignName', 'group', 'productType', 'productSubGroup', 'brand', 'packSize',
+  'uom', 'uomGroup', 'hsnSac', 'taxCode', 'taxGroup', 'priceList', 'preferredVendor', 'purchasingUom',
+  'salesUom', 'barcode', 'additionalIdentifier', 'shippingType', 'remarks', 'manageItemBy', 'manageMethod',
+];
+const BOOL_FIELDS = ['isSalesItem', 'isPurchaseItem', 'isInventoryItem', 'isExcisable', 'isGst'];
+const toNum = (v) => {
+  const n = Number(String(v ?? '').replace(/[,₹\s]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
+const toBool = (v) => !['false', '0', 'no', 'n', 'off', ''].includes(String(v).trim().toLowerCase());
+const has = (row, key) => row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== '';
+
+/** Returns the lenient product data for one sheet row, or null for a row with nothing in it. */
+export function normalizeBulkProductRow(row, { isNew = true } = {}) {
+  if (!row || typeof row !== 'object') return null;
+  const data = {};
+  STRING_FIELDS.forEach((k) => { if (has(row, k)) data[k] = String(row[k]).trim(); });
+  BOOL_FIELDS.forEach((k) => { if (has(row, k)) data[k] = toBool(row[k]); });
+  ['unitPrice', 'salePrice', 'mrp'].forEach((k) => { if (has(row, k)) data[k] = toNum(row[k]); });
+  if (has(row, 'availableQty')) data.availableQty = Math.round(toNum(row.availableQty));
+  if (has(row, 'status')) data.status = String(row.status).trim().toLowerCase() === 'inactive' ? 'INACTIVE' : 'ACTIVE';
+  if (Object.keys(data).length === 0) return null;
+  if (isNew) {
+    if (!data.name) data.name = data.barcode || data.code || data.shortId || 'Unnamed item';
+    if (!data.group) data.group = 'General';
+    if (!data.uom) data.uom = 'PCS';
+  }
+  return data;
+}
+
+export const bulkProductRowSchema = z.record(z.string(), z.unknown());
 
 export const bulkProductImportSchema = z.object({
   rows: z.array(z.record(z.string(), z.unknown())).min(1, 'No rows to import').max(500, 'Send at most 500 rows per request'),

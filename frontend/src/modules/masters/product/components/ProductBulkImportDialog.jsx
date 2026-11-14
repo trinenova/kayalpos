@@ -42,6 +42,20 @@ const HEADER_MAP = {
   'available qty': 'availableQty',
   qty: 'availableQty',
   status: 'status',
+  barcode: 'barcode',
+  'bar code': 'barcode',
+  'unit price': 'unitPrice',
+  unitprice: 'unitPrice',
+  'pack size': 'packSize',
+  packsize: 'packSize',
+  'product sub group': 'productSubGroup',
+  'foreign name': 'foreignName',
+  'tax group': 'taxGroup',
+  remarks: 'remarks',
+  'additional identifier': 'additionalIdentifier',
+  'preferred vendor': 'preferredVendor',
+  'purchasing uom': 'purchasingUom',
+  'sales uom': 'salesUom',
 };
 
 function normalizeHeader(header) {
@@ -59,11 +73,6 @@ function normalizeRow(rawRow) {
     const field = HEADER_MAP[normalizeHeader(key)];
     if (!field) return;
     if (value === undefined || value === null || value === '') return;
-    if (field === 'status') {
-      const normalized = String(value).trim().toLowerCase();
-      row.status = normalized === 'inactive' ? 'INACTIVE' : 'ACTIVE';
-      return;
-    }
     row[field] = value;
   });
   return row;

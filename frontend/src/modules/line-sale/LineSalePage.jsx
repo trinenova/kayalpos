@@ -372,18 +372,24 @@ export default function LineSalePage() {
     : billNoError
       ? "Unavailable"
       : previewBillNo || "—";
-  const dateTime = useMemo(
-    () =>
-      new Intl.DateTimeFormat("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }).format(new Date()),
-    [],
-  );
+  // Bill date/time. It used to be computed once when the page opened, so it
+  // went stale (and printed the wrong time). It now ticks with the clock for
+  // the on-screen header, and printing always re-reads the current time.
+  const formatBillDateTime = (value = new Date()) =>
+    new Intl.DateTimeFormat("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(new Date(value));
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
+  const dateTime = formatBillDateTime(now);
 
   // Rounded to paise before being compared anywhere (the "Exact" chip sets
   // receivedAmount to this same rounded value) — without this, grandTotal's
@@ -836,7 +842,7 @@ export default function LineSalePage() {
           company: companyProfile,
           billNo: sale.billNo || billNo,
           cashierName,
-          dateTime,
+          dateTime: formatBillDateTime(sale.createdAt || new Date()),
           cart,
           totals,
           paymentMethod,
@@ -871,7 +877,7 @@ export default function LineSalePage() {
       company: companyProfile,
       billNo,
       cashierName,
-      dateTime,
+      dateTime: formatBillDateTime(new Date()),
       cart,
       totals,
       paymentMethod,

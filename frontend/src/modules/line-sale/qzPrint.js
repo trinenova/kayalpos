@@ -8,11 +8,18 @@
  * anything fails, printHtml() falls back to the normal browser print dialog,
  * so printing never stops working.
  *
+ * Trust: when the backend has the signing key configured (QZ_PRIVATE_KEY_B64 /
+ * QZ_CERTIFICATE_B64) every request is signed, and QZ Tray - given the matching
+ * override.crt once - stops asking "Allow?". Without it QZ Tray prompts.
+ *
  * Optional settings (per PC, in localStorage):
  *   nexora.qzPrinter     - printer name; default = the Windows default printer
  *   nexora.silentPrint   - set to "off" to always use the browser dialog
  *   nexora.receiptWidth  - paper width in mm (default 80)
  */
+import { API_BASE_URL } from '../../api/baseApi';
+import { loadPersistedAuth } from '../../features/auth/authStorage';
+
 const QZ_SRC = 'https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js';
 const RETRY_AFTER_MS = 60_000; // after a failed attempt, don't retry for a minute
 
@@ -38,13 +45,39 @@ function loadQz() {
   return loadPromise;
 }
 
+const authHeaders = () => {
+  const token = loadPersistedAuth()?.token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+async function configureSigning(qz) {
+  qz.security.setSignatureAlgorithm('SHA512');
+  qz.security.setCertificatePromise((resolve) => {
+    fetch(`${API_BASE_URL}/print/certificate`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error('no certificate'))))
+      .then(resolve)
+      // Not configured / offline: fall back to unsigned mode (QZ Tray prompts).
+      .catch(() => resolve(''));
+  });
+  qz.security.setSignaturePromise((toSign) => (resolve, reject) => {
+    fetch(`${API_BASE_URL}/print/sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ message: toSign }),
+    })
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error('sign failed'))))
+      .then(resolve)
+      .catch(() => resolve(''));
+  });
+}
+
+let signingReady = false;
 async function connect(qz) {
   if (qz.websocket.isActive()) return;
-  // Unsigned mode: QZ Tray asks the operator to "Allow" (tick "Remember this
-  // decision" once and it never asks again on that PC).
-  qz.security.setCertificatePromise((resolve) => resolve(''));
-  qz.security.setSignatureAlgorithm('SHA512');
-  qz.security.setSignaturePromise(() => (resolve) => resolve());
+  if (!signingReady) {
+    await configureSigning(qz);
+    signingReady = true;
+  }
   await qz.websocket.connect({ retries: 0, delay: 0 });
 }
 

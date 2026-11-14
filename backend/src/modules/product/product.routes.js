@@ -4,7 +4,7 @@ import { requireAuth } from '../../middleware/auth.js';
 import { validateRequest } from '../../middleware/validateRequest.js';
 import { ApiError } from '../../middleware/errorHandler.js';
 import {
-  createProductSchema, updateProductSchema, bulkProductRowSchema, bulkProductImportSchema,
+  createProductSchema, updateProductSchema, normalizeBulkProductRow, bulkProductImportSchema,
 } from './product.schema.js';
 
 const router = createCrudRouter({
@@ -42,34 +42,45 @@ router.post('/bulk', requireAuth, validateRequest(bulkProductImportSchema), asyn
 
     for (let i = 0; i < rows.length; i += 1) {
       const rawRow = rows[i];
-      const parsed = bulkProductRowSchema.safeParse(rawRow);
+      // Lenient import: no field validation; rows with nothing in them are skipped.
+      const code = String(rawRow?.code ?? '').trim();
+      const existing = code ? await prisma.product.findUnique({ where: { tenantId_code: { tenantId, code } } }) : null;
+      const data = normalizeBulkProductRow(rawRow, { isNew: !existing });
+      if (!data) continue; // eslint-disable-line no-continue
 
-      if (!parsed.success) {
-        errors.push({ row: i + 1, code: rawRow?.code, message: Object.values(parsed.error.flatten().fieldErrors).flat().join('; ') || 'Invalid row' });
-        continue; // eslint-disable-line no-continue
-      }
-
-      const data = parsed.data;
-      try {
-        if (data.code) {
-          const existing = await prisma.product.findUnique({ where: { tenantId_code: { tenantId, code: data.code } } });
-          if (existing) {
-            await prisma.product.update({ where: { id: existing.id }, data });
-            updated += 1;
-            continue; // eslint-disable-line no-continue
-          }
+      const save = async (payload) => {
+        if (existing) {
+          await prisma.product.update({ where: { id: existing.id }, data: payload });
+          return 'updated';
         }
-        if (!data.code) {
+        const body = { ...payload };
+        if (!body.code) {
           const count = await prisma.product.count({ where: { tenantId } });
           // Matches crudFactory's nextCode() convention (PREFIX-NNNN) used by
           // the single-row create endpoint, so bulk-imported and manually
           // created products never end up with mismatched code formats.
-          data.code = `PROD-${String(count + 1).padStart(4, '0')}`;
+          body.code = `PROD-${String(count + 1).padStart(4, '0')}`;
         }
-        await prisma.product.create({ data: { ...data, tenantId } });
-        created += 1;
+        await prisma.product.create({ data: { ...body, tenantId } });
+        return 'created';
+      };
+      try {
+        let outcome;
+        try {
+          outcome = await save(data);
+        } catch (err) {
+          // A Short ID that already belongs to another product must not fail
+          // the row: import it without the Short ID instead.
+          if (err?.code === 'P2002' && data.shortId) {
+            const { shortId, ...rest } = data; // eslint-disable-line no-unused-vars
+            outcome = await save(rest);
+          } else {
+            throw err;
+          }
+        }
+        if (outcome === 'updated') updated += 1; else created += 1;
       } catch (err) {
-        errors.push({ row: i + 1, code: data.code, message: err?.code === 'P2002' ? 'Duplicate product code or Short ID' : 'Failed to save row' });
+        errors.push({ row: i + 1, code: data.code, message: err?.code === 'P2002' ? 'Duplicate product code' : 'Failed to save row' });
       }
     }
 

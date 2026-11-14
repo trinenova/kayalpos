@@ -1,0 +1,12 @@
+NEXORA POS - STOP THE QZ TRAY "ALLOW" PROMPT (one-time setup)
+
+A) Backend (Azure Web App) - add 2 Application settings, then restart:
+   QZ_CERTIFICATE_B64 = (contents of qz-certificate.b64.txt)
+   QZ_PRIVATE_KEY_B64 = (contents of qz-private-key.b64.txt)   <-- SECRET, never commit it
+   For local testing add the same two lines to backend/.env
+
+B) Every counter PC (once):
+   1. Copy override.crt to:  C:\Program Files\QZ Tray\override.crt
+   2. Quit QZ Tray (system tray icon > Exit) and start it again.
+   3. Open Nexora, print a bill. In the QZ Tray prompt tick
+      "Remember this decision" and click Allow. It will not ask again.

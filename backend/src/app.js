@@ -63,6 +63,7 @@ import roleRoutes from './modules/role/role.routes.js';
 import userRoutes from './modules/user/user.routes.js';
 import { authorize } from './middleware/authorize.js';
 import { requireAuth } from './middleware/auth.js';
+import printRoutes from './modules/print/print.routes.js';
 import notificationRoutes from './modules/notification/notification.routes.js';
 import { notifyOnWrite } from './modules/notification/notification.middleware.js';
 
@@ -112,6 +113,8 @@ app.use(express.json({ limit: '2mb' }));
 app.use('/api/health', healthRoutes);
 
 app.use('/api/auth', authRoutes);
+// QZ Tray certificate + request signing for silent receipt printing.
+app.use('/api/print', printRoutes);
 app.use('/api/dashboard', authorize('management-dashboard', { lookup: true }), dashboardRoutes);
 app.use('/api/outlets', authorize('outlet', { lookup: true, publicRead: true }), notifyOnWrite('outlet'), outletRoutes);
 app.use('/api/warehouses', authorize('warehouse', { lookup: true }), notifyOnWrite('warehouse'), warehouseRoutes);
