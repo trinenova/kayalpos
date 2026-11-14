@@ -104,9 +104,13 @@ export function buildReceiptHtml({
   // summed into one number.
   const taxGroups = new Map();
   cart.forEach((line) => {
-    const lineTaxable = totals.subTotal > 0 ? ((line.qty * line.price) / totals.subTotal) * totals.taxable : 0;
+    // Prices include GST: the line's share of the payable, less its GST.
+    // Products without GST (rate 0) are left out of the GST table.
+    if (!(line.taxRate > 0)) return;
+    const net = Math.max(totals.subTotal - totals.discountAmount, 0);
+    const gross = totals.subTotal > 0 ? ((line.qty * line.price) / totals.subTotal) * net : 0;
     const key = line.taxRate;
-    taxGroups.set(key, (taxGroups.get(key) || 0) + lineTaxable);
+    taxGroups.set(key, (taxGroups.get(key) || 0) + gross / (1 + line.taxRate));
   });
   const taxRows = Array.from(taxGroups.entries())
     .sort((a, b) => a[0] - b[0])
@@ -193,7 +197,7 @@ ${buildAddressHtml(company)}
   <div class="row"><span>Tendered:</span><span>${money(receivedAmount)}</span></div>
   <div class="row"><span>Balance:</span><span>${money(Math.max(changeAmount, 0))}</span></div>
 
-  <div class="divider"></div>
+  ${taxRows ? `<div class="divider"></div>
   <table>
     <thead>
       <tr>
@@ -205,7 +209,7 @@ ${buildAddressHtml(company)}
       </tr>
     </thead>
     <tbody>${taxRows}</tbody>
-  </table>
+  </table>` : ''}
 
   <div class="divider"></div>
   <div class="center footer">
@@ -302,7 +306,9 @@ export function buildReturnReceiptHtml({
 
   const taxGroups = new Map();
   lines.forEach((line) => {
-    taxGroups.set(line.taxRate, (taxGroups.get(line.taxRate) || 0) + line.qty * line.rate);
+    // Rates include GST; non-GST products stay out of the GST table.
+    if (!(line.taxRate > 0)) return;
+    taxGroups.set(line.taxRate, (taxGroups.get(line.taxRate) || 0) + (line.qty * line.rate) / (1 + line.taxRate));
   });
   const taxRows = Array.from(taxGroups.entries())
     .sort((a, b) => a[0] - b[0])
@@ -379,16 +385,16 @@ ${buildAddressHtml(company)}
 
   <div class="row"><span>Items: ${lines.length}  Qty: ${totalQty}</span><span>Rnd: ${money(roundOff)}</span></div>
   <div class="row"><span>Sub Total</span><span>${money(totals.subTotal)}</span></div>
-  <div class="row"><span>GST</span><span>${money(totals.tax)}</span></div>
+  ${totals.tax > 0 ? `<div class="row"><span>GST (incl.)</span><span>${money(totals.tax)}</span></div>` : ''}
   <div class="row bold"><span>Refund Total</span><span>${money(roundedTotal)}</span></div>
   <div class="row"><span>${refundLine}</span></div>
 
-  <div class="divider"></div>
-  <table>
+  ${taxRows ? '<div class="divider"></div>' : ''}
+  ${taxRows ? `<table>
     <thead>
       <tr><th class="num">GST%</th><th class="num">Sale Amt</th><th class="num">GST</th><th class="num">CGST</th><th class="num">SGST</th></tr>
     </thead>
-    <tbody>${taxRows}</tbody>
+    <tbody>${taxRows}</tbody>` : '<table><tbody>'}
   </table>
 
   <div class="divider"></div>

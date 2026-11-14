@@ -33,7 +33,7 @@ const billToReceipt = (bill, company) => {
   }));
   const subTotal = num(bill.subTotal);
   const discountAmount = num(bill.discountAmount);
-  const taxable = Math.max(subTotal - discountAmount, 0);
+  const taxable = Math.max(subTotal - discountAmount - num(bill.taxAmount), 0);
   return {
     company,
     billNo: bill.billNo,
@@ -186,7 +186,7 @@ export default function RecentSalesDialog({ open, onClose }) {
                 {[
                   ['Sub total', num(viewing.subTotal)],
                   ['Discount', num(viewing.discountAmount)],
-                  ['GST', num(viewing.taxAmount)],
+                  ...(num(viewing.taxAmount) > 0 ? [['GST (incl.)', num(viewing.taxAmount)]] : []),
                 ].map(([label, value]) => (
                   <Stack key={label} direction="row" sx={{ justifyContent: 'space-between' }}>
                     <Typography variant="body2" color="text.secondary">{label}</Typography>

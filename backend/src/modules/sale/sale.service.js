@@ -105,7 +105,10 @@ export async function createSale({
     lines.forEach((line, index) => {
       const product = productById.get(line.productId);
       allocations[index].forEach((part) => {
-        const amount = part.price * part.qty;
+        // Cashier-edited price (Line Sale) replaces the lot/product price; the
+        // lot (and its purchase cost) is still consumed as usual.
+        const unitPrice = line.price != null ? Number(line.price) : part.price;
+        const amount = unitPrice * part.qty;
         subTotal += amount;
         lineData.push({
           productId: product.id,
@@ -113,7 +116,7 @@ export async function createSale({
           name: product.name,
           uom: product.uom,
           qty: part.qty,
-          price: part.price,
+          price: unitPrice,
           taxRate: taxRateOf(product),
           amount,
           lotId: part.lot?.id || null,
@@ -125,12 +128,16 @@ export async function createSale({
     const discountAmount = discountType === 'percent'
       ? (subTotal * discountValue) / 100
       : Math.min(discountValue, subTotal);
-    const taxable = Math.max(subTotal - discountAmount, 0);
+    // Prices are GST-inclusive: the payable is subtotal - discount, and each
+    // line's GST is extracted from its share of that amount.
+    const net = Math.max(subTotal - discountAmount, 0);
     const taxAmount = lineData.reduce((sum, line) => {
-      const lineTaxable = subTotal > 0 ? (line.amount / subTotal) * taxable : 0;
-      return sum + lineTaxable * Number(line.taxRate);
+      const lineGross = subTotal > 0 ? (line.amount / subTotal) * net : 0;
+      const r = Number(line.taxRate);
+      return sum + (lineGross - lineGross / (1 + r));
     }, 0);
-    const grandTotal = taxable + taxAmount;
+    const taxable = net - taxAmount;
+    const grandTotal = net;
     const changeAmount = receivedAmount - grandTotal;
 
     const billNo = await nextBillNoWithinTx(tx, tenantId);
@@ -453,7 +460,7 @@ async function getTenderSalesReport(tenantId, outletId, { date, page, pageSize }
     received += Number(sale.received);
     changeReturned += Number(sale.changeAmount);
   });
-  const taxableAmount = Math.max(grossSales - discount, 0);
+  const taxableAmount = Math.max(grossSales - discount - taxAmount, 0);
   const refunds = dayReturns.reduce((sum, ret) => sum + Number(ret.grandTotal), 0);
   const netRetained = received - changeReturned;
 

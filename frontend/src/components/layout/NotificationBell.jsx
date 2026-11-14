@@ -118,6 +118,9 @@ export default function NotificationBell() {
     dispatch(notificationApi.util.invalidateTags(['Notification']));
     // Own actions are already visible on screen; only toast other people's
     // events and any warning/error alert (low stock etc.).
+    // Stock alerts (out of stock / low stock) stay in the bell list but never
+    // pop up as a toast — selling at zero stock is allowed.
+    if (/stock/i.test(String(n.title || ''))) return;
     if (n.createdBy !== userId || n.severity === 'warning' || n.severity === 'error') {
       dispatch(showToast(`${n.title}${n.message ? ` — ${n.message}` : ''}`, SEVERITY_COLOR[n.severity] || 'info'));
     }

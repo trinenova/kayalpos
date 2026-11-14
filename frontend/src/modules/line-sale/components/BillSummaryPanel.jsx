@@ -89,14 +89,10 @@ export default function BillSummaryPanel({
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>Discount</Typography>
           <Typography variant="body2" sx={{ fontWeight: 700 }}>{money(totals.discountAmount)}</Typography>
         </Stack>
-        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>Taxable value</Typography>
-          <Typography variant="body2" sx={{ fontWeight: 700 }}>{money(totals.taxable)}</Typography>
-        </Stack>
-        {taxGroups.length === 0 && (
+        {taxGroups.length > 0 && (
           <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>GST</Typography>
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>{money(0)}</Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>Taxable value</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>{money(totals.taxable)}</Typography>
           </Stack>
         )}
         {taxGroups.map((g) => (

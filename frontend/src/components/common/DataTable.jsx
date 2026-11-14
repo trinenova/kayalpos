@@ -37,22 +37,29 @@ export default function DataTable({
   // entire column, leaving no room for even a single digit — which is why
   // fitContainer tables force tight, explicit padding instead of relying on
   // the `dense` prop (which also shrinks font size, not just padding).
-  const cellFitSx = (col) => (fitContainer
-    ? {
-        width: col.width,
-        maxWidth: col.width,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: col.wrap ? 'normal' : 'nowrap',
-        padding: '8px 6px',
-      }
-    : undefined);
+  // A column with width: 'auto' is sized by its content (table-layout switches
+  // to auto; the other columns keep their % widths).
+  const hasAutoCol = fitContainer && columns.some((c) => c.width === 'auto');
+  const cellFitSx = (col) => {
+    if (!fitContainer) return undefined;
+    if (col.width === 'auto') {
+      return { width: 'auto', whiteSpace: 'nowrap', padding: '8px 6px' };
+    }
+    return {
+      width: col.width,
+      maxWidth: col.width,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: col.wrap ? 'normal' : 'nowrap',
+      padding: '8px 6px',
+    };
+  };
 
   return (
     <TableContainer sx={fitContainer ? { overflowX: 'hidden', width: '100%' } : { overflowX: 'auto' }}>
       <Table
         size={dense ? 'small' : 'medium'}
-        sx={fitContainer ? { width: '100%', tableLayout: 'fixed' } : { minWidth: dense ? 0 : 480 }}
+        sx={fitContainer ? { width: '100%', tableLayout: hasAutoCol ? 'auto' : 'fixed' } : { minWidth: dense ? 0 : 480 }}
       >
         <TableHead>
           <TableRow>

@@ -102,8 +102,11 @@ export default function SalesReturnPage() {
     const subTotal = cart.reduce((sum, line) => sum + line.qty * line.rate, 0);
     const discountAmount = subTotal * ratio;
     const taxable = Math.max(subTotal - discountAmount, 0);
-    const tax = cart.reduce((sum, line) => sum + line.qty * line.rate * (1 - ratio) * line.taxRate, 0);
-    const grandTotal = taxable + tax;
+    const tax = cart.reduce((sum, line) => {
+      const gross = line.qty * line.rate * (1 - ratio);
+      return sum + (gross - gross / (1 + line.taxRate));
+    }, 0);
+    const grandTotal = taxable;
     return { subTotal, discountAmount, tax, grandTotal };
   }, [cart, originalInvoice]);
 

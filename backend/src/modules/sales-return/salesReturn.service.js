@@ -163,8 +163,12 @@ export async function createSalesReturn(tenantId, data, actor) {
     const subTotal = round2(lineData.reduce((sum, line) => sum + line.amount, 0));
     const discountRatio = discountRatioOf(sale);
     const discountAmount = round2(subTotal * discountRatio);
-    const taxAmount = round2(lineData.reduce((sum, line) => sum + line.amount * (1 - discountRatio) * line.taxRate, 0));
-    const grandTotal = round2(subTotal - discountAmount + taxAmount);
+    // Prices include GST: refund = subtotal - discount; GST is extracted.
+    const taxAmount = round2(lineData.reduce((sum, line) => {
+      const gross = line.amount * (1 - discountRatio);
+      return sum + (gross - gross / (1 + line.taxRate));
+    }, 0));
+    const grandTotal = round2(subTotal - discountAmount);
 
     const returnNo = await nextReturnNoWithin(tx, tenantId);
 

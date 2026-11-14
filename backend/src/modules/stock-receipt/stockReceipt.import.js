@@ -149,6 +149,7 @@ export async function importStockReceipts(tenantId, receipts, actor) {
     let payload = null;
     if (!problems.length) {
       const parsed = createStockReceiptSchema.safeParse({
+        code: ref,
         receiptDate: unit.receiptDate,
         purchaseType: PURCHASE_TYPES.find((t) => lower(t) === lower(unit.purchaseType)),
         purchaseInvoiceNo: unit.purchaseInvoiceNo ?? '',

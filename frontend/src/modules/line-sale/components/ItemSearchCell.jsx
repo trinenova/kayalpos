@@ -112,7 +112,7 @@ export function useItemSearchIndex(products) {
  * to a single product; ambiguous / unknown input raises `onNotify`.
  */
 export default function ItemSearchCell({
-  index, line = null, onSelect, onNotify, autoFocus = false, wide = false,
+  index, line = null, onSelect, onNotify, autoFocus = false, wide = false, fit = false, minChars = 0,
 }) {
   const { productEntries, labelEntries, isLoading } = index;
   const wrapRef = useRef(null);
@@ -201,7 +201,7 @@ export default function ItemSearchCell({
     // Tab is caught in the capture phase on this wrapper (not on the
     // TextField) so it fires regardless of how the MUI version forwards
     // key handlers to the inner input.
-    <Box ref={wrapRef} onKeyDownCapture={handleTab} sx={{ minWidth: 0, width: '100%' }}>
+    <Box ref={wrapRef} onKeyDownCapture={handleTab} sx={fit ? { boxSizing: 'border-box', minWidth: 300, width: `calc(${Math.min(Math.max(inputValue.length, minChars, line ? 8 : 30) * 1.15 + 2, 90)}ch + 72px)` } : { minWidth: 0, width: '100%', maxWidth: '100%' }}>
       <Autocomplete
         size="small"
         fullWidth
@@ -232,7 +232,7 @@ export default function ItemSearchCell({
           if (typeof value === 'string') resolveTyped();
           else commit(value);
         }}
-        slotProps={wide ? { popper: { placement: 'bottom-start', sx: { width: 'fit-content !important', minWidth: 360, maxWidth: 560 } } } : undefined}
+        slotProps={(wide || fit) ? { popper: { placement: 'bottom-start', sx: { width: 'fit-content !important', minWidth: 360, maxWidth: 560 } } } : undefined}
         noOptionsText="No matching items"
         renderOption={(props, option) => {
           const { key: _muiKey, ...optionProps } = props;

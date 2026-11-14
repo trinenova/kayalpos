@@ -7,7 +7,8 @@ import { TAX_RATE } from './saleConstants.js';
  * at its own product's rate. A product with no tax code, or one that matches no
  * ACTIVE tax code, falls back to the flat default (TAX_RATE, 5%) — the previous
  * behaviour — so nothing breaks while the master data is being filled in.
- * Prices are treated as excluding GST (GST is added on top), as before.
+ * Prices INCLUDE GST (it is extracted, not added); products without the GST
+ * flag in the master get rate 0.
  */
 export async function loadTaxRateResolver(client, tenantId) {
   const codes = await client.taxCode.findMany({
@@ -24,6 +25,9 @@ export async function loadTaxRateResolver(client, tenantId) {
   });
   return (product) => {
     const key = String(product?.taxCode || '').trim().toLowerCase();
+    // GST applies only to products flagged GST in the Product master; prices
+    // are GST-inclusive, so a non-GST product carries no tax at all.
+    if (!product?.isGst) return 0;
     return key && byKey.has(key) ? byKey.get(key) : TAX_RATE;
   };
 }

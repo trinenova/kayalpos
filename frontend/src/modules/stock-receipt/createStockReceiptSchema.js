@@ -68,76 +68,15 @@ export function emptyItemRow({ orderedQty = '', receivedQty = '' } = {}) {
   };
 }
 
-// A plain non-negative decimal amount, entered as free text — same
-// convention as Stock Transfer's own decimalString() helper.
-const decimalString = (message) => z.string().trim()
-  .refine((v) => v === '' || (/^\d+(\.\d{1,3})?$/.test(v) && Number(v) >= 0), message);
-
-const itemRowSchema = z.object({
-  itemCode: z.string().trim(),
-  itemName: z.string().trim(),
-  hsnCode: z.string().trim(),
-  barcode: z.string().trim(),
-  uom: z.string().trim(),
-  orderedQty: decimalString('Enter a valid ordered quantity'),
-  receivedQty: decimalString('Enter a valid received quantity'),
-  mrp: decimalString('Enter a valid MRP'),
-  unitCost: decimalString('Enter a valid unit cost'),
-  discount: decimalString('Enter a valid discount'),
-  tax: decimalString('Enter a valid tax'),
-  warehouse: z.string().trim(),
-  batchNo: z.string().trim(),
-  expiryDate: z.string().trim(),
-  remarks: z.string().trim(),
-});
-
 // Every row with a non-blank Item Code is part of the document — same
 // "filled row" convention Stock Indent/Stock Transfer use.
 export function isBlankItemRow(row) {
   return !row?.itemCode?.trim();
 }
 
-export const createStockReceiptSchema = z
-  .object({
-    receiptDate: z.string().trim().min(1, 'Receipt date is required'),
-    purchaseType: z.string().trim().min(1, 'Select a purchase type'),
-    purchaseInvoiceNo: z.string().trim().optional(),
-    purchaseInvoiceDate: z.string().trim().optional(),
-    grnDcNo: z.string().trim().optional(),
-    grnDcDate: z.string().trim().optional(),
-    receiptRemarks: z.string().trim().optional(),
-
-    supplier: z.string().trim().min(1, 'Select a supplier'),
-    fromOutlet: z.string().trim().min(1, 'Select a from outlet / HO'),
-    costCenter: z.string().trim().optional(),
-    contactPerson: z.string().trim().optional(),
-    mobileNo: z.string().trim().optional(),
-
-    referenceNo: z.string().trim().optional(),
-    vehicleNo: z.string().trim().optional(),
-    transporter: z.string().trim().optional(),
-    deliveryChallanNo: z.string().trim().optional(),
-    deliveryDate: z.string().trim().optional(),
-    otherRemarks: z.string().trim().optional(),
-
-    notes: z.string().trim().optional(),
-    items: z.array(itemRowSchema),
-  })
-  .superRefine((values, ctx) => {
-    const filledRows = values.items.filter((row) => !isBlankItemRow(row));
-    values.items.forEach((row, index) => {
-      if (isBlankItemRow(row)) return;
-      if (!row.itemName?.trim()) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items', index, 'itemName'], message: 'Item name is required' });
-      }
-      if (!row.receivedQty?.trim() || Number(row.receivedQty) <= 0) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items', index, 'receivedQty'], message: 'Received qty must be greater than 0' });
-      }
-    });
-    if (filledRows.length === 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items'], message: 'Add at least one item' });
-    }
-  });
+// Stock Receipt has no form validation: every field is optional and nothing
+// blocks Save (the server fills in safe defaults for anything left blank).
+export const createStockReceiptSchema = z.object({}).passthrough();
 
 export const createStockReceiptDefaultValues = {
   receiptDate: todayFormatted(),

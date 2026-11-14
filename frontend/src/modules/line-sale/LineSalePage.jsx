@@ -214,6 +214,8 @@ export default function LineSalePage() {
     });
     return (product) => {
       const key = String(product?.taxCode || "").trim().toLowerCase();
+      // GST only for products flagged GST in the master; prices include GST.
+      if (!product?.isGst) return 0;
       return key && byKey.has(key) ? byKey.get(key) : TAX_RATE;
     };
   }, [taxCodes]);
@@ -250,6 +252,8 @@ export default function LineSalePage() {
         const live = productByCode[line.code];
         // Each line is taxed at its own product's current GST rate.
         const taxed = live ? { ...line, taxRate: live.taxRate } : line;
+        // A price typed in by the cashier wins over the stock-lot price.
+        if (line.priceOverride != null) return { ...taxed, price: line.priceOverride };
         const lots = lotsByProduct.get(line.id);
         if (!lots || lots.length === 0) return taxed;
         const fallback = live?.price ?? line.price;
@@ -405,22 +409,24 @@ export default function LineSalePage() {
       discountType === "percent"
         ? (subTotal * discount) / 100
         : Math.min(discount, subTotal);
-    const taxable = Math.max(subTotal - discountAmount, 0);
-    const tax = cart.reduce((sum, line) => {
-      const lineTaxable =
-        subTotal > 0 ? ((line.qty * line.price) / subTotal) * taxable : 0;
-      return sum + lineTaxable * line.taxRate;
-    }, 0);
-    const grandTotal = round2(taxable + tax);
-    // GST broken out per rate (one row per distinct rate on the bill).
+    // Prices include GST: payable = subtotal - discount; each line's GST is
+    // extracted from its share of that amount (rate 0 -> no GST).
+    const net = Math.max(subTotal - discountAmount, 0);
     const byRate = new Map();
+    let tax = 0;
     cart.forEach((line) => {
-      const lineTaxable = subTotal > 0 ? ((line.qty * line.price) / subTotal) * taxable : 0;
-      const g = byRate.get(line.taxRate) || { rate: line.taxRate, taxable: 0, tax: 0 };
-      g.taxable += lineTaxable;
-      g.tax += lineTaxable * line.taxRate;
-      byRate.set(line.taxRate, g);
+      const gross = subTotal > 0 ? ((line.qty * line.price) / subTotal) * net : 0;
+      const lineTaxable = gross / (1 + line.taxRate);
+      tax += gross - lineTaxable;
+      if (line.taxRate > 0) {
+        const g = byRate.get(line.taxRate) || { rate: line.taxRate, taxable: 0, tax: 0 };
+        g.taxable += lineTaxable;
+        g.tax += gross - lineTaxable;
+        byRate.set(line.taxRate, g);
+      }
     });
+    const taxable = net - tax;
+    const grandTotal = round2(net);
     const taxGroups = [...byRate.values()]
       .sort((a, b) => a.rate - b.rate)
       .map((g) => ({ rate: g.rate, taxable: round2(g.taxable), tax: round2(g.tax) }));
@@ -531,6 +537,17 @@ export default function LineSalePage() {
     );
   };
 
+  // Cashier edits the unit price (before GST) on a cart line.
+  const handlePriceChange = (code, price) => {
+    const value = Number(price);
+    if (!Number.isFinite(value) || value < 0) return;
+    setCart((prev) =>
+      prev.map((line) =>
+        line.code === code ? { ...line, priceOverride: value } : line,
+      ),
+    );
+  };
+
   const handleRemove = (code) => {
     setCart((prev) => prev.filter((line) => line.code !== code));
   };
@@ -589,7 +606,11 @@ export default function LineSalePage() {
           ? customer.id
           : undefined,
       customerName: customer.name,
-      lines: cart.map((line) => ({ productId: line.id, qty: line.qty })),
+      lines: cart.map((line) => ({
+        productId: line.id,
+        qty: line.qty,
+        ...(line.priceOverride != null ? { price: line.priceOverride } : {}),
+      })),
       discountType,
       discountValue: discount,
     };
@@ -810,7 +831,11 @@ export default function LineSalePage() {
           : undefined,
       customerName: customer.name,
       cashierName,
-      lines: cart.map((line) => ({ productId: line.id, qty: line.qty })),
+      lines: cart.map((line) => ({
+        productId: line.id,
+        qty: line.qty,
+        ...(line.priceOverride != null ? { price: line.priceOverride } : {}),
+      })),
       discountType,
       discountValue: discount,
       paymentMethod,
@@ -928,6 +953,14 @@ export default function LineSalePage() {
       if (s.step !== "billing" || !s.hasItems || s.blocked) return;
       const el = e.target;
       if (!(el instanceof HTMLElement)) return;
+      // Enter on a row's + / - / delete button must not press it again — Enter
+      // is only for "Continue to Payment".
+      if (el.closest("[data-no-enter]")) {
+        e.preventDefault();
+        e.stopPropagation();
+        s.proceed();
+        return;
+      }
       if (el.closest('[role="dialog"], [role="listbox"], button, a, textarea'))
         return;
       if (el.tagName === "INPUT") {
@@ -1129,6 +1162,7 @@ export default function LineSalePage() {
                 <CurrentSaleTable
                   lines={cart}
                   onQtyChange={handleQtyChange}
+                  onPriceChange={handlePriceChange}
                   onRemove={handleRemove}
                   products={counterProducts}
                   counters={itemGroups.map((g) => g.name)}

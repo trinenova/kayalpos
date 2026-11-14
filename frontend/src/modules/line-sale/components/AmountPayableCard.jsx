@@ -13,7 +13,7 @@ export default function AmountPayableCard({ billNo, lines, totals }) {
   const shown = lines.slice(0, MAX_LINES);
   const hidden = lines.length - shown.length;
   const groups = totals.taxGroups || [];
-  const rates = [...new Set(lines.map((l) => l.taxRate))];
+  const rates = [...new Set(lines.map((l) => l.taxRate).filter((r) => r > 0))];
   const gstLabel =
     rates.length === 1 ? `GST ${Number((rates[0] * 100).toFixed(2))}%` : "GST";
 
@@ -106,9 +106,11 @@ export default function AmountPayableCard({ billNo, lines, totals }) {
         <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
           Disc <b style={{ color: "#fff" }}>{money(totals.discountAmount)}</b>
         </Typography>
-        <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
-          {gstLabel} <b style={{ color: "#fff" }}>{money(totals.tax)}</b>
-        </Typography>
+        {totals.tax > 0 && (
+          <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+            {gstLabel} <b style={{ color: "#fff" }}>{money(totals.tax)}</b>
+          </Typography>
+        )}
         <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
           {lines.length} item{lines.length === 1 ? "" : "s"}
         </Typography>

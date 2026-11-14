@@ -1,6 +1,6 @@
 import { prisma } from '../../config/prisma.js';
 import { ApiError } from '../../middleware/errorHandler.js';
-import { receiveLot } from '../product-lot/productLot.service.js';
+import { receiveLot, syncProductToHeadLot } from '../product-lot/productLot.service.js';
 
 const CODE_PREFIX = 'RCPT';
 const CODE_LENGTH = 5;
@@ -10,8 +10,17 @@ function round2(n) {
 }
 
 async function nextReceiptCode(tenantId) {
-  const count = await prisma.stockReceipt.count({ where: { tenantId } });
-  return `${CODE_PREFIX}-${String(count + 1).padStart(CODE_LENGTH, '0')}`;
+  // Highest existing number + 1 (not a row count — a count repeats a code
+  // after any receipt is deleted and then trips the unique constraint).
+  const rows = await prisma.stockReceipt.findMany({
+    where: { tenantId, code: { startsWith: `${CODE_PREFIX}-` } },
+    select: { code: true },
+  });
+  const max = rows.reduce((m, r) => {
+    const n = parseInt(String(r.code).slice(CODE_PREFIX.length + 1), 10);
+    return Number.isFinite(n) && n > m ? n : m;
+  }, 0);
+  return `${CODE_PREFIX}-${String(max + 1).padStart(CODE_LENGTH, '0')}`;
 }
 
 export async function nextCodePreview(tenantId) {
@@ -24,17 +33,16 @@ export async function nextCodePreview(tenantId) {
 // trusted. Returns the supplier's name for the snapshot column, or throws a
 // 400 naming exactly which reference was invalid.
 async function assertSupplierIsValid(tx, tenantId, supplierId) {
-  const supplier = await tx.supplier.findFirst({ where: { id: supplierId, tenantId } });
-  if (!supplier) throw new ApiError(400, 'Supplier references a supplier that does not exist');
-  return supplier.name;
+  // No validation: an unknown/blank supplier is simply stored as given.
+  const supplier = supplierId ? await tx.supplier.findFirst({ where: { id: supplierId, tenantId } }) : null;
+  return supplier ? supplier.name : (supplierId || '');
 }
 
 // Same validated-reference pattern as Stock Indent/Stock Transfer's own
 // fromOutletId/toOutletId.
-async function assertOutletIsValid(tx, tenantId, outletId, label) {
-  const outlet = await tx.outlet.findFirst({ where: { id: outletId, tenantId } });
-  if (!outlet) throw new ApiError(400, `${label} references an outlet that does not exist`);
-  return outlet.name;
+async function assertOutletIsValid(tx, tenantId, outletId) {
+  const outlet = outletId ? await tx.outlet.findFirst({ where: { id: outletId, tenantId } }) : null;
+  return outlet ? outlet.name : (outletId || '');
 }
 
 // Unlike Stock Indent/Stock Transfer's computeItems, there is no Product-
@@ -177,12 +185,40 @@ async function receiveLotsForReceipt(tx, tenantId, receipt) {
   }
 }
 
+// Undoes a received receipt's stock-in: removes the lots it created and takes
+// their quantity back off Product.availableQty. Refused when any of that stock
+// has already been sold (lot partly/fully used) — it can't be reversed cleanly.
+async function reverseReceiptLots(tx, tenantId, receipt) {
+  const lots = await tx.productLot.findMany({
+    where: { tenantId, source: 'RECEIPT', sourceRef: receipt.code },
+  });
+  // Take back only what is still unsold; a lot that was partly sold stays on
+  // record with nothing remaining, an untouched lot is removed.
+  for (const lot of lots) {
+    const remaining = Math.round(Number(lot.qtyRemaining));
+    // eslint-disable-next-line no-await-in-loop
+    await tx.product.update({ where: { id: lot.productId }, data: { availableQty: { decrement: remaining } } });
+    // eslint-disable-next-line no-await-in-loop
+    if (Number(lot.qtyRemaining) < Number(lot.qtyReceived)) await tx.productLot.update({ where: { id: lot.id }, data: { qtyRemaining: 0 } });
+    // eslint-disable-next-line no-await-in-loop
+    else await tx.productLot.delete({ where: { id: lot.id } });
+  }
+  for (const productId of new Set(lots.map((l) => l.productId))) {
+    // eslint-disable-next-line no-await-in-loop
+    await syncProductToHeadLot(tx, tenantId, productId);
+  }
+}
+
 export async function createStockReceipt(tenantId, data, actor) {
   return prisma.$transaction(async (tx) => {
-    const code = data.code || (await nextReceiptCode(tenantId));
+    let code = data.code || (await nextReceiptCode(tenantId));
+    // A clashing Receipt No. is replaced by the next free one, never an error.
+    if (data.code && await tx.stockReceipt.findFirst({ where: { tenantId, code }, select: { id: true } })) {
+      code = await nextReceiptCode(tenantId);
+    }
 
     const supplierName = await assertSupplierIsValid(tx, tenantId, data.supplierId);
-    const fromOutletName = await assertOutletIsValid(tx, tenantId, data.fromOutletId, 'From Outlet / HO');
+    const fromOutletName = await assertOutletIsValid(tx, tenantId, data.fromOutletId);
 
     const { rows, totals } = computeItems(data.items);
 
@@ -193,6 +229,7 @@ export async function createStockReceipt(tenantId, data, actor) {
     const row = await tx.stockReceipt.create({
       data: {
         ...rest,
+        receiptDate: rest.receiptDate || new Date(),
         tenantId,
         code,
         supplierId,
@@ -222,12 +259,19 @@ export async function updateStockReceipt(tenantId, id, data, actor) {
     if (!existing) throw new ApiError(404, 'Stock receipt not found');
 
     const supplierName = await assertSupplierIsValid(tx, tenantId, data.supplierId);
-    const fromOutletName = await assertOutletIsValid(tx, tenantId, data.fromOutletId, 'From Outlet / HO');
+    const fromOutletName = await assertOutletIsValid(tx, tenantId, data.fromOutletId);
 
     const { rows, totals } = computeItems(data.items);
     const {
       items, status, code, supplierId, fromOutletId, ...rest
     } = data;
+
+    // Editing a received receipt: take its old stock-in back first; it is
+    // received again below with the new lines.
+    if (existing.status === 'received') {
+      const old = await tx.stockReceipt.findFirst({ where: { id }, select: { code: true } });
+      await reverseReceiptLots(tx, tenantId, old);
+    }
 
     // Items are a full replace on every edit (delete then recreate) — the
     // form always resubmits the complete grid, same approach the other
@@ -238,6 +282,7 @@ export async function updateStockReceipt(tenantId, id, data, actor) {
       where: { id },
       data: {
         ...rest,
+        receiptDate: rest.receiptDate || existing.receiptDate,
         supplierId,
         supplierName,
         fromOutletId,
@@ -253,8 +298,7 @@ export async function updateStockReceipt(tenantId, id, data, actor) {
       },
       include: { items: true },
     });
-    // Stock-in happens once: only on the first transition to 'received'.
-    if (status === 'received' && existing.status !== 'received') await receiveLotsForReceipt(tx, tenantId, row);
+    if (status === 'received') await receiveLotsForReceipt(tx, tenantId, row);
     return row;
   });
 }
@@ -262,7 +306,10 @@ export async function updateStockReceipt(tenantId, id, data, actor) {
 export async function deleteStockReceipt(tenantId, id) {
   const existing = await prisma.stockReceipt.findFirst({ where: { id, tenantId } });
   if (!existing) throw new ApiError(404, 'Stock receipt not found');
-  await prisma.stockReceipt.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    if (existing.status === 'received') await reverseReceiptLots(tx, tenantId, existing);
+    await tx.stockReceipt.delete({ where: { id } });
+  });
   return { id };
 }
 

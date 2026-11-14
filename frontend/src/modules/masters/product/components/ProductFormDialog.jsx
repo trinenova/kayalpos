@@ -166,7 +166,7 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
   }, (errors) => {
     // Validation failed: previously nothing happened when the bad field sat on
     // another tab. Jump to that tab and say what's wrong.
-    const generalFields = ['uom', 'brand', 'additionalIdentifier', 'packSize', 'manageItemBy', 'hsnSac', 'taxCode', 'taxGroup', 'remarks', 'isGst', 'isExcisable'];
+    const generalFields = ['uom', 'brand', 'barcode', 'additionalIdentifier', 'packSize', 'manageItemBy', 'hsnSac', 'taxCode', 'taxGroup', 'remarks', 'isGst', 'isExcisable'];
     const tabOf = (name) => {
       if (['preferredVendor', 'purchasingUom'].includes(name)) return 'Purchase';
       if (['salesUom', 'salePrice', 'mrp'].includes(name)) return 'Sales';
@@ -241,6 +241,14 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
 
             {activeTab === 'General' && (
               <Grid container spacing={2}>
+                <Grid size={{ xs: 12 }}>
+                  <FormTextField
+                    name="barcode"
+                    label="Barcode"
+                    placeholder="Scan or type the product barcode"
+                    helperText="Once saved, scanning this barcode on Line Sale adds the product automatically."
+                  />
+                </Grid>
                 <Grid size={{ xs: 12, sm: 6 }}>
                   <FormSelect name="uom" label="UOM *" options={baseUomOptions} />
                 </Grid>

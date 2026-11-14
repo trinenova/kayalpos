@@ -205,7 +205,8 @@ export function productFormValuesToPayload(values) {
     isSalesItem: Boolean(values.isSalesItem),
     isPurchaseItem: Boolean(values.isPurchaseItem),
     isInventoryItem: Boolean(values.isInventoryItem),
-    barcode: values.barcode?.trim() || undefined,
+    // '' (not undefined) so clearing the field on edit really clears it.
+    barcode: values.barcode?.trim() || '',
     additionalIdentifier: values.additionalIdentifier?.trim() || undefined,
     shippingType: values.shippingType || undefined,
     remarks: values.remarks?.trim() || undefined,

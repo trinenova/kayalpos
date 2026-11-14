@@ -121,7 +121,11 @@ export async function writeTczBill(tx, {
   const lines = lineData.map((line, index) => {
     const product = productById.get(line.productId);
     // Same apportioning createSale uses for the bill's tax amount.
-    const lineTaxable = subTotal > 0 ? (line.amount / subTotal) * taxable : 0;
+    // Prices include GST: split the line's share of the payable into
+    // taxable value + GST.
+    const lineGross = subTotal > 0 ? (line.amount / subTotal) * (taxable + taxAmount) : 0;
+    const lineTaxable = lineGross / (1 + Number(line.taxRate));
+    const lineTax = lineGross - lineTaxable;
     return {
       docEntry: header.docEntry,
       lineId: index + 1,
@@ -137,7 +141,7 @@ export async function writeTczBill(tx, {
       lineTotal: round2(line.amount),
       inStock: stockBefore.get(line.productId) ?? product.availableQty,
       taxableValue: round6(lineTaxable),
-      taxValue: round6(lineTaxable * Number(line.taxRate)),
+      taxValue: round6(lineTax),
       taxRate: line.taxRate,
       // FIFO lot sold from + that lot's purchase price (null when unlotted).
       lotId: line.lotId || null,
