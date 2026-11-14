@@ -33,6 +33,15 @@ export function authorize(menuKey, { lookup = false, alsoView = [], publicRead =
       const action = ACTION_BY_METHOD[req.method] || 'edit';
       req.access = await getAccess(req.user.id);
 
+      // Outlet access (User Management): expose the user's allowed outlets to
+      // services, and refuse a session whose outlet was taken away after the
+      // token was issued (e.g. an admin removed it while the user was signed in).
+      const allowedOutletIds = req.access.allowedOutletIds || [];
+      req.user.allowedOutletIds = allowedOutletIds;
+      if (allowedOutletIds.length && req.user.outletId && !allowedOutletIds.includes(req.user.outletId)) {
+        return next(new ApiError(403, 'You no longer have access to this outlet. Please switch outlet or sign in again.'));
+      }
+
       if (action === 'view' && lookup) return next();
       if (can(req.access, menuKey, action)) return next();
       if (action === 'view' && alsoView.some((key) => can(req.access, key, 'view'))) return next();

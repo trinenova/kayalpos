@@ -32,6 +32,12 @@ export async function login({ username, password, outletId }) {
     throw new ApiError(400, 'Select a valid outlet');
   }
 
+  // Users limited to specific outlets (User.outletIds) can only sign in to one
+  // of them. An empty list means every outlet.
+  if (user.outletIds?.length && !user.outletIds.includes(outlet.id)) {
+    throw new ApiError(403, 'You are not assigned to this outlet. Select one of your outlets.');
+  }
+
   const payload = {
     id: user.id,
     tenantId: user.tenantId,
@@ -46,6 +52,35 @@ export async function login({ username, password, outletId }) {
   const access = await getAccess(user.id);
   await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
 
+  return { user: { ...payload, ...access }, token };
+}
+
+/**
+ * Switches the signed-in user's active outlet: validates it (same tenant,
+ * active, and among the user's allowed outlets) and issues a fresh JWT whose
+ * outletId every outlet-scoped route reads — so the top-bar switcher changes
+ * what the server uses, not just what the screen shows.
+ */
+export async function switchOutlet({ userId, outletId }) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.isActive) throw new ApiError(401, 'Invalid or expired session');
+
+  const outlet = await prisma.outlet.findFirst({ where: { id: outletId, tenantId: user.tenantId, isActive: true } });
+  if (!outlet) throw new ApiError(400, 'Select a valid outlet');
+  if (user.outletIds?.length && !user.outletIds.includes(outlet.id)) {
+    throw new ApiError(403, 'You are not assigned to this outlet.');
+  }
+
+  const payload = {
+    id: user.id,
+    tenantId: user.tenantId,
+    username: user.username,
+    name: user.name,
+    role: user.role,
+    outletId: outlet.id,
+  };
+  const token = jwt.sign(payload, env.JWT_SECRET, { expiresIn: '12h' });
+  const access = await getAccess(user.id);
   return { user: { ...payload, ...access }, token };
 }
 

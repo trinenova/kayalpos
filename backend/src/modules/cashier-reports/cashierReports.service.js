@@ -1,5 +1,6 @@
 import { prisma } from '../../config/prisma.js';
 import { ApiError } from '../../middleware/errorHandler.js';
+import { outletIdFilter, outletAnd, outletFieldFilter } from '../../utils/outletScope.js';
 
 /**
  * Cashier Reports (Reports > Cashier Reports): Cashier Sales, Cash
@@ -67,13 +68,13 @@ async function resolveOutletIds(user, outletId) {
   const mayChoose = user.role === 'ADMIN';
   if (!mayChoose || !outletId || outletId === 'all') {
     if (mayChoose && outletId === 'all') {
-      const outlets = await prisma.outlet.findMany({ where: { tenantId: user.tenantId }, select: { id: true } });
+      const outlets = await prisma.outlet.findMany({ where: { tenantId: user.tenantId, ...outletIdFilter(user) }, select: { id: true } });
       return outlets.map((o) => o.id);
     }
     if (!user.outletId) throw new ApiError(400, 'No outlet is assigned to your session');
     return [user.outletId];
   }
-  const outlet = await prisma.outlet.findFirst({ where: { id: outletId, tenantId: user.tenantId }, select: { id: true } });
+  const outlet = await prisma.outlet.findFirst({ where: { id: outletId, tenantId: user.tenantId, ...outletAnd(user) }, select: { id: true } });
   if (!outlet) throw new ApiError(404, 'Outlet not found');
   return [outlet.id];
 }
@@ -81,12 +82,12 @@ async function resolveOutletIds(user, outletId) {
 export async function listCashierReportFilters(user) {
   const mayChoose = user.role === 'ADMIN';
   const outlets = await prisma.outlet.findMany({
-    where: { tenantId: user.tenantId, ...(mayChoose ? {} : { id: user.outletId || '' }) },
+    where: { tenantId: user.tenantId, ...(mayChoose ? outletIdFilter(user) : { id: user.outletId || '' }) },
     select: { id: true, name: true, code: true },
     orderBy: { name: 'asc' },
   });
   const cashiers = await prisma.shiftSession.findMany({
-    where: { tenantId: user.tenantId, ...(mayChoose ? {} : { outletId: user.outletId || '' }) },
+    where: { tenantId: user.tenantId, ...(mayChoose ? outletFieldFilter(user) : { outletId: user.outletId || '' }) },
     select: { cashierId: true, cashierName: true },
     distinct: ['cashierId'],
     orderBy: { cashierName: 'asc' },

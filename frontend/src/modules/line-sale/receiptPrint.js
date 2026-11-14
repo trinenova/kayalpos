@@ -161,8 +161,7 @@ export function buildReceiptHtml({
  * that blocker since it isn't a new window, and is removed from the DOM
  * right after the print dialog closes.
  */
-export function printReceipt(data) {
-  const html = buildReceiptHtml(data);
+export function printHtml(html) {
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
   iframe.style.right = '0';
@@ -187,4 +186,127 @@ export function printReceipt(data) {
   };
   iframe.srcdoc = html;
   return true;
+}
+
+export function printReceipt(data) {
+  return printHtml(buildReceiptHtml(data));
+}
+
+/**
+ * Sales Return slip — same 80mm thermal layout and styling as the bill
+ * receipt, adapted for a return: original bill reference, returned lines,
+ * the per-rate GST being reversed, and the refund mode/amount.
+ * `isPreview` marks a slip printed before the return is processed (the
+ * return number is then only the upcoming number, not yet final).
+ */
+export function buildReturnReceiptHtml({
+  company, returnNo, originalInvoiceNo, invoiceDate, dateTime, cashierName, customerName,
+  reasonLabel, lines, totals, refundMode, refundToLabel, isPreview,
+}) {
+  const totalQty = lines.reduce((sum, line) => sum + line.qty, 0);
+  const roundedTotal = Math.round(totals.grandTotal);
+  const roundOff = round2(roundedTotal - totals.grandTotal);
+
+  const itemRows = lines.map((line) => `
+    <tr>
+      <td>${esc(line.name)}</td>
+      <td class="num">${line.qty}</td>
+      <td class="num">${money(line.rate)}</td>
+      <td class="num">${money(line.qty * line.rate)}</td>
+    </tr>`).join('');
+
+  const taxGroups = new Map();
+  lines.forEach((line) => {
+    taxGroups.set(line.taxRate, (taxGroups.get(line.taxRate) || 0) + line.qty * line.rate);
+  });
+  const taxRows = Array.from(taxGroups.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([rate, saleAmt]) => {
+      const gst = round2(saleAmt * rate);
+      const half = round2(gst / 2);
+      return `
+      <tr>
+        <td class="num">${(rate * 100).toFixed(2)}</td>
+        <td class="num">${money(saleAmt)}</td>
+        <td class="num">${money(gst)}</td>
+        <td class="num">${money(half)}</td>
+        <td class="num">${money(half)}</td>
+      </tr>`;
+    }).join('');
+
+  const addressLines = [
+    company?.addressLine1, company?.addressLine2, company?.addressLine3, company?.addressLine4, company?.addressLandmark,
+  ].filter(Boolean).join(', ');
+  const phoneLine = [company?.phone, company?.mobile].filter(Boolean).join(', ');
+  const refundLine = refundMode === 'credit-note'
+    ? 'Credit Note issued'
+    : `Refund to ${esc(refundToLabel || '-')}`;
+
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Sales Return ${esc(returnNo)}</title>
+<style>
+  @page { size: 80mm auto; margin: 2mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #000; width: 76mm; margin: 0 auto; }
+  .center { text-align: center; }
+  .bold { font-weight: 700; }
+  .divider { border-top: 1px dashed #000; margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 1px 2px; text-align: left; font-size: 11px; }
+  td.num, th.num { text-align: right; }
+  .row { display: flex; justify-content: space-between; }
+  .biz-name { font-size: 14px; }
+  .footer { margin-top: 6px; }
+</style>
+</head>
+<body>
+  <div class="center bold biz-name">${esc(company?.companyName || company?.displayName || '—')}</div>
+  ${addressLines ? `<div class="center">${esc(addressLines)}</div>` : ''}
+  ${phoneLine ? `<div class="center">Ph: ${esc(phoneLine)}</div>` : ''}
+  ${company?.gstin ? `<div class="center">GSTIN: ${esc(company.gstin)}</div>` : ''}
+
+  <div class="divider"></div>
+  <div class="center bold">SALES RETURN${isPreview ? ' (PREVIEW)' : ''}</div>
+  <div class="row"><span>Return No: ${esc(returnNo)}</span></div>
+  <div class="row"><span>Original Bill:</span><span>${esc(originalInvoiceNo)}</span></div>
+  <div class="row"><span>Bill Date:</span><span>${esc(invoiceDate)}</span></div>
+  <div class="row"><span>Date &amp; Time:</span><span>${esc(dateTime)}</span></div>
+  <div class="row"><span>Customer:</span><span>${esc(customerName)}</span></div>
+  <div class="row"><span>Cashier:</span><span>${esc(cashierName)}</span></div>
+  <div class="row"><span>Reason:</span><span>${esc(reasonLabel || '-')}</span></div>
+  <div class="divider"></div>
+
+  <table>
+    <thead>
+      <tr><th>Item Name</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Value</th></tr>
+    </thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+  <div class="divider"></div>
+
+  <div class="row"><span>Items: ${lines.length}  Qty: ${totalQty}</span><span>Rnd: ${money(roundOff)}</span></div>
+  <div class="row"><span>Sub Total</span><span>${money(totals.subTotal)}</span></div>
+  <div class="row"><span>GST</span><span>${money(totals.tax)}</span></div>
+  <div class="row bold"><span>Refund Total</span><span>${money(roundedTotal)}</span></div>
+  <div class="row"><span>${refundLine}</span></div>
+
+  <div class="divider"></div>
+  <table>
+    <thead>
+      <tr><th class="num">GST%</th><th class="num">Sale Amt</th><th class="num">GST</th><th class="num">CGST</th><th class="num">SGST</th></tr>
+    </thead>
+    <tbody>${taxRows}</tbody>
+  </table>
+
+  <div class="divider"></div>
+  <div class="center footer">Goods returned against the bill above.<br />Thank You!</div>
+</body>
+</html>`;
+}
+
+export function printReturnReceipt(data) {
+  return printHtml(buildReturnReceiptHtml(data));
 }

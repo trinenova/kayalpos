@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Stack, Typography, Button,
-  TextField, MenuItem, FormControlLabel, Switch, CircularProgress,
+  TextField, MenuItem, FormControlLabel, Switch, CircularProgress, Autocomplete, Checkbox, Chip,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
+import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined';
 
 import { useAppDispatch } from '../../app/hooks';
 import { showToast } from '../../features/ui/uiSlice';
+import { useGetOutletsQuery } from '../../api/outletApi';
 import { useCreateUserMutation, useUpdateUserMutation, useGetRolesQuery } from '../../api/userManagementApi';
 
 const FULL_ACCESS = '__admin__';
 
 const EMPTY = {
-  name: '', username: '', password: '', roleId: '', isActive: true,
+  name: '', username: '', password: '', roleId: '', outletIds: [], isActive: true,
 };
 
 /** Add / edit a user and pick the role that decides what they can see and do. */
@@ -21,6 +23,8 @@ export default function UserFormDialog({ open, user, isSelf = false, onClose }) 
   const dispatch = useAppDispatch();
   const isEdit = Boolean(user);
   const { data: roles = [] } = useGetRolesQuery();
+  const { data: outletData } = useGetOutletsQuery();
+  const outlets = (Array.isArray(outletData) ? outletData : outletData?.rows || []).filter((o) => o.isActive !== false);
   const [createUser] = useCreateUserMutation();
   const [updateUser] = useUpdateUserMutation();
 
@@ -32,7 +36,7 @@ export default function UserFormDialog({ open, user, isSelf = false, onClose }) 
     if (!open) return;
     setForm(user
       ? {
-        name: user.name, username: user.username, password: '', roleId: user.roleId || FULL_ACCESS, isActive: user.isActive,
+        name: user.name, username: user.username, password: '', roleId: user.roleId || FULL_ACCESS, outletIds: user.outletIds || [], isActive: user.isActive,
       }
       : EMPTY);
     setErrors({});
@@ -62,6 +66,7 @@ export default function UserFormDialog({ open, user, isSelf = false, onClose }) 
         name: form.name.trim(),
         username: form.username.trim(),
         roleId: form.roleId === FULL_ACCESS ? null : form.roleId,
+        outletIds: form.outletIds,
         isActive: form.isActive,
         ...(form.password ? { password: form.password } : {}),
       };
@@ -114,6 +119,45 @@ export default function UserFormDialog({ open, user, isSelf = false, onClose }) 
               <MenuItem key={r.id} value={r.id}>{r.name}{r.isActive ? '' : ' (inactive)'}</MenuItem>
             ))}
           </TextField>
+          <Autocomplete
+            multiple
+            disableCloseOnSelect
+            options={outlets}
+            value={outlets.filter((o) => form.outletIds.includes(o.id))}
+            onChange={(_, selected) => setForm((f) => ({ ...f, outletIds: selected.map((o) => o.id) }))}
+            getOptionLabel={(o) => o.name}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            renderOption={({ key, ...props }, option, { selected }) => (
+              <li key={key} {...props}>
+                <Checkbox size="small" checked={selected} sx={{ mr: 1, p: 0.5 }} />
+                {option.name}
+              </li>
+            )}
+            renderValue={(selected, getItemProps) => selected.map((option, index) => {
+              const { key, ...itemProps } = getItemProps({ index });
+              return <Chip key={key} size="small" label={option.name} {...itemProps} />;
+            })}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Outlet Access"
+                placeholder={form.outletIds.length ? '' : 'All outlets'}
+                helperText="Pick one or more outlets this user can work in. Leave empty for all outlets."
+                slotProps={{
+                  ...params.slotProps,
+                  input: {
+                    ...params.slotProps?.input,
+                    startAdornment: (
+                      <>
+                        <StorefrontOutlinedIcon fontSize="small" sx={{ color: 'text.secondary', mr: 0.5 }} />
+                        {params.slotProps?.input?.startAdornment}
+                      </>
+                    ),
+                  },
+                }}
+              />
+            )}
+          />
           <FormControlLabel
             control={<Switch checked={form.isActive} disabled={isSelf} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))} />}
             label="Active (can sign in)"

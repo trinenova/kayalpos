@@ -1,5 +1,7 @@
 import { createSlice } from '@reduxjs/toolkit';
-import { loadPersistedAuth, persistAuth, clearPersistedAuth } from './authStorage';
+import {
+  loadPersistedAuth, persistAuth, clearPersistedAuth, isPersistentSession,
+} from './authStorage';
 
 const persisted = loadPersistedAuth();
 
@@ -33,6 +35,14 @@ const authSlice = createSlice({
     setAccess(state, action) {
       if (state.user) Object.assign(state.user, action.payload);
     },
+    // After POST /auth/switch-outlet: the server issued a new token carrying
+    // the new outlet, so replace the whole session (keeping Remember-me).
+    setSession(state, action) {
+      const { user, token } = action.payload;
+      state.user = user;
+      state.token = token;
+      persistAuth({ user, token }, isPersistentSession());
+    },
     setActiveOutlet(state, action) {
       if (state.user) {
         state.user.outletId = action.payload;
@@ -43,7 +53,7 @@ const authSlice = createSlice({
 });
 
 export const {
-  setCredentials, logout, setActiveOutlet, setAccess,
+  setCredentials, logout, setActiveOutlet, setAccess, setSession,
 } = authSlice.actions;
 export default authSlice.reducer;
 

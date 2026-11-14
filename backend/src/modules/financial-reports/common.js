@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../../config/prisma.js';
 import { ApiError } from '../../middleware/errorHandler.js';
+import { outletIdFilter, outletAnd, outletFieldFilter } from '../../utils/outletScope.js';
 
 // Shared by the Profitability / Tax Summary / Outstanding / Payment Collection
 // reports (Reports > Financial Reports). All are read-only.
@@ -51,10 +52,10 @@ export async function resolveOutletIds(user, outletId) {
     return [user.outletId];
   }
   if (outletId === 'all') {
-    const outlets = await prisma.outlet.findMany({ where: { tenantId: user.tenantId }, select: { id: true } });
+    const outlets = await prisma.outlet.findMany({ where: { tenantId: user.tenantId, ...outletIdFilter(user) }, select: { id: true } });
     return outlets.map((o) => o.id);
   }
-  const outlet = await prisma.outlet.findFirst({ where: { id: outletId, tenantId: user.tenantId }, select: { id: true } });
+  const outlet = await prisma.outlet.findFirst({ where: { id: outletId, tenantId: user.tenantId, ...outletAnd(user) }, select: { id: true } });
   if (!outlet) throw new ApiError(404, 'Outlet not found');
   return [outlet.id];
 }
@@ -62,7 +63,7 @@ export async function resolveOutletIds(user, outletId) {
 export async function listFilterOptions(user) {
   const mayChoose = user.role === 'ADMIN';
   const outlets = await prisma.outlet.findMany({
-    where: { tenantId: user.tenantId, ...(mayChoose ? {} : { id: user.outletId || '' }) },
+    where: { tenantId: user.tenantId, ...(mayChoose ? outletIdFilter(user) : { id: user.outletId || '' }) },
     select: { id: true, name: true },
     orderBy: { name: 'asc' },
   });

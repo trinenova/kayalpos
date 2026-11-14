@@ -52,6 +52,7 @@ export function notifyOnWrite(key) {
           title: isSale ? 'New sale completed' : `${spec.label} ${verb}`,
           message: `${ref ? `${ref} · ` : ''}by ${actor}`,
           createdBy: req.user.id,
+          outletId: req.user.outletId || null,
         });
         if (spec.stock) scheduleStockCheck(req.user.tenantId);
       } catch (err) {

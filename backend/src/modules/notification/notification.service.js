@@ -9,13 +9,13 @@ const RETENTION_DAYS = 30;
  * Returns the row, or null (duplicate / failure).
  */
 export async function notify({
-  tenantId, type, category, severity = 'info', title, message = null, link = null, dedupeKey = null, createdBy = null,
+  tenantId, type, category, severity = 'info', title, message = null, link = null, dedupeKey = null, createdBy = null, outletId = null,
 }) {
   try {
     const row = await prisma.notification.create({
-      data: { tenantId, type, category, severity, title, message, link, dedupeKey, createdBy },
+      data: { tenantId, type, category, severity, title, message, link, dedupeKey, createdBy, outletId },
     });
-    broadcast(tenantId, { type: 'notification', notification: row });
+    broadcast(tenantId, { type: 'notification', notification: row }, outletId);
     return row;
   } catch (err) {
     if (err?.code !== 'P2002') console.error('[notifications] create failed:', err.message);
@@ -23,14 +23,24 @@ export async function notify({
   }
 }
 
-const visibleTo = (tenantId, userId) => ({
+// Outlets a user is limited to ([] = all), read fresh so access changes apply.
+export async function allowedOutletsOf(userId) {
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { outletIds: true } });
+  return u?.outletIds || [];
+}
+
+// Tenant-wide events (no outlet) are visible to everyone; outlet events only
+// to users with access to that outlet.
+const visibleTo = (tenantId, userId, allowed = []) => ({
   tenantId,
   createdAt: { gte: new Date(Date.now() - RETENTION_DAYS * 86_400_000) },
   states: { none: { userId, dismissedAt: { not: null } } },
+  ...(allowed.length ? { OR: [{ outletId: null }, { outletId: { in: allowed } }] } : {}),
 });
 
 export async function listForUser(tenantId, userId, { limit = 30, unreadOnly = false } = {}) {
-  const where = visibleTo(tenantId, userId);
+  const allowed = await allowedOutletsOf(userId);
+  const where = visibleTo(tenantId, userId, allowed);
   const [rows, unreadCount] = await Promise.all([
     prisma.notification.findMany({
       where: unreadOnly ? { ...where, states: { none: { userId } } } : where,
@@ -58,7 +68,7 @@ export async function markRead(tenantId, userId, id) {
 
 export async function markAllRead(tenantId, userId) {
   const rows = await prisma.notification.findMany({
-    where: { ...visibleTo(tenantId, userId), states: { none: { userId } } },
+    where: { ...visibleTo(tenantId, userId, await allowedOutletsOf(userId)), states: { none: { userId } } },
     select: { id: true },
   });
   if (!rows.length) return;
@@ -69,7 +79,7 @@ export async function markAllRead(tenantId, userId) {
 }
 
 export async function clearAll(tenantId, userId) {
-  const rows = await prisma.notification.findMany({ where: visibleTo(tenantId, userId), select: { id: true } });
+  const rows = await prisma.notification.findMany({ where: visibleTo(tenantId, userId, await allowedOutletsOf(userId)), select: { id: true } });
   if (!rows.length) return;
   const ids = rows.map((r) => r.id);
   const now = new Date();

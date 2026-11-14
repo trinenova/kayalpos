@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Stack, Box, Typography, Button, Menu, MenuItem, Grid, Breadcrumbs, Link as MuiLink,
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
 } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -11,7 +12,10 @@ import { selectCurrentUser } from '../../features/auth/authSlice';
 import { showToast } from '../../features/ui/uiSlice';
 import {
   useNextSalesReturnNoQuery, useLazyLookupOriginalInvoiceQuery, useCreateSalesReturnMutation,
+  useUploadSalesReturnEvidenceMutation,
 } from '../../api/salesReturnApi';
+import { useCompanyProfileQuery } from '../../api/companyApi';
+import { printReturnReceipt } from '../line-sale/receiptPrint';
 
 import ReturnItemsPanel from './components/ReturnItemsPanel';
 import ReturnCartPanel from './components/ReturnCartPanel';
@@ -24,6 +28,7 @@ import RefundSummaryCard from './components/RefundSummaryCard';
 import PaymentMethodSummaryCard from './components/PaymentMethodSummaryCard';
 import ReturnActionsCard from './components/ReturnActionsCard';
 import FindInvoiceDialog from './components/FindInvoiceDialog';
+import EvidenceDialog from './components/EvidenceDialog';
 import { RETURN_REASONS, REFUND_PAYMENT_METHODS } from './salesReturnConstants';
 
 const WALK_IN_CUSTOMER_NAME = 'Walk-in Customer';
@@ -61,10 +66,18 @@ export default function SalesReturnPage() {
   const [refundTo, setRefundTo] = useState('');
   const [printSettingsEnabled, setPrintSettingsEnabled] = useState(false);
   const [moreActionsAnchor, setMoreActionsAnchor] = useState(null);
+  const [evidence, setEvidence] = useState([]);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  // Snapshot of the last processed return, so "Print Return" still works
+  // after Process Return has reset the working form.
+  const [lastReturn, setLastReturn] = useState(null);
 
   const { data: returnNo } = useNextSalesReturnNoQuery();
   const [lookupInvoice, { isFetching: isLookingUp }] = useLazyLookupOriginalInvoiceQuery();
   const [createSalesReturn, { isLoading: isProcessing }] = useCreateSalesReturnMutation();
+  const [uploadEvidence] = useUploadSalesReturnEvidenceMutation();
+  const { data: companyProfile } = useCompanyProfileQuery();
 
   const returnDate = useMemo(
     () => new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date()),
@@ -148,9 +161,58 @@ export default function SalesReturnPage() {
     setRefundTo('');
     dispatch(showToast('Return cleared', 'info'));
   };
-  const handleMoreAction = (label) => {
+  // One click selects every line that still has something left to return, at
+  // its full remaining qty (the invoice's returnableQty already nets off
+  // earlier returns, so a partly-returned line only adds what's left).
+  const handleReturnAll = () => {
     setMoreActionsAnchor(null);
-    dispatch(showToast(`${label} is coming soon`, 'info'));
+    if (!originalInvoice) {
+      dispatch(showToast('Find the original invoice first', 'warning'));
+      return;
+    }
+    const returnable = originalInvoice.items.filter((item) => item.returnableQty > 0);
+    if (returnable.length === 0) {
+      dispatch(showToast('Every item on this invoice has already been returned', 'info'));
+      return;
+    }
+    setCart(returnable.map((item) => ({
+      saleLineId: item.saleLineId,
+      code: item.code,
+      name: item.name,
+      uom: item.uom,
+      rate: item.rate,
+      taxRate: item.taxRate,
+      qty: item.returnableQty,
+      maxQty: item.returnableQty,
+    })));
+    dispatch(showToast(`${returnable.length} item${returnable.length === 1 ? '' : 's'} added for return`, 'success'));
+  };
+
+  const handleOpenEvidence = () => {
+    setMoreActionsAnchor(null);
+    setEvidenceOpen(true);
+  };
+
+  // A return is only saved when "Process Return" succeeds (there is no
+  // draft/pending record), so cancelling just discards the in-progress form.
+  const handleOpenCancel = () => {
+    setMoreActionsAnchor(null);
+    if (!originalInvoice && cart.length === 0 && evidence.length === 0 && !reason && !note) {
+      dispatch(showToast('There is no return in progress', 'info'));
+      return;
+    }
+    setCancelOpen(true);
+  };
+  const handleConfirmCancel = () => {
+    setCancelOpen(false);
+    setOriginalInvoice(null);
+    setCart([]);
+    setReason('');
+    setNote('');
+    setRefundMode('refund');
+    setRefundTo('');
+    setEvidence([]);
+    dispatch(showToast('Return cancelled', 'info'));
   };
   const handleAddCustomer = () => dispatch(showToast('Add Customer is coming soon', 'info'));
 
@@ -182,6 +244,39 @@ export default function SalesReturnPage() {
         refundTo: refundMode === 'refund' ? refundTo : undefined,
       }).unwrap();
 
+      // Keep a print-ready snapshot (before the form resets below).
+      const printable = {
+        returnNo: saved.returnNo,
+        originalInvoiceNo: originalInvoice.invoiceNo,
+        invoiceDate: formatDate(originalInvoice.invoiceDate),
+        customerName: originalInvoice.customerName || WALK_IN_CUSTOMER_NAME,
+        reasonLabel: RETURN_REASONS.find((r) => r.value === reason)?.label || reason,
+        lines: cart.map((line) => ({ name: line.name, qty: line.qty, rate: line.rate, taxRate: line.taxRate })),
+        totals: { subTotal: totals.subTotal, tax: totals.tax, grandTotal: totals.grandTotal },
+        refundMode,
+        refundToLabel: REFUND_PAYMENT_METHODS.find((m) => m.value === refundTo)?.label || refundTo,
+        dateTime: new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date()),
+      };
+      setLastReturn(printable);
+
+      // Photo evidence goes up against the saved return; a failed upload
+      // never undoes the return itself.
+      if (evidence.length > 0) {
+        let failed = 0;
+        for (const photo of evidence) {
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            await uploadEvidence({ returnId: saved.id, fileName: photo.name, dataUrl: photo.dataUrl }).unwrap();
+          } catch {
+            failed += 1;
+          }
+        }
+        if (failed > 0) dispatch(showToast(`${failed} photo${failed === 1 ? '' : 's'} could not be uploaded`, 'warning'));
+      }
+      if (printSettingsEnabled) {
+        printReturnReceipt({ ...printable, company: companyProfile, cashierName: user?.name || 'Admin' });
+      }
+
       dispatch(showToast(`Return ${saved.returnNo} processed — refund initiated`, 'success'));
 
       // Refresh the same invoice's returnable/alreadyRefunded figures (this
@@ -193,11 +288,38 @@ export default function SalesReturnPage() {
       setReason('');
       setNote('');
       setRefundTo('');
+      setEvidence([]);
     } catch (err) {
       dispatch(showToast(err?.data?.message || 'Failed to process the return', 'error'));
     }
   };
-  const handlePrintReturn = () => dispatch(showToast('Print Return is coming soon', 'info'));
+  // Prints the return being built (marked PREVIEW — its number isn't final
+  // until processed), otherwise the last processed return.
+  const handlePrintReturn = () => {
+    const base = { company: companyProfile, cashierName: user?.name || 'Admin' };
+    if (originalInvoice && cart.length > 0) {
+      printReturnReceipt({
+        ...base,
+        isPreview: true,
+        returnNo: returnNo || '-',
+        originalInvoiceNo: originalInvoice.invoiceNo,
+        invoiceDate: formatDate(originalInvoice.invoiceDate),
+        customerName: originalInvoice.customerName || WALK_IN_CUSTOMER_NAME,
+        reasonLabel: RETURN_REASONS.find((r) => r.value === reason)?.label || '',
+        lines: cart.map((line) => ({ name: line.name, qty: line.qty, rate: line.rate, taxRate: line.taxRate })),
+        totals,
+        refundMode,
+        refundToLabel: REFUND_PAYMENT_METHODS.find((m) => m.value === refundTo)?.label || '',
+        dateTime: new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date()),
+      });
+      return;
+    }
+    if (lastReturn) {
+      printReturnReceipt({ ...base, ...lastReturn });
+      return;
+    }
+    dispatch(showToast('Add items to the return (or process one) before printing', 'warning'));
+  };
 
   return (
     <Stack spacing={2}>
@@ -221,9 +343,9 @@ export default function SalesReturnPage() {
             More Actions
           </Button>
           <Menu anchorEl={moreActionsAnchor} open={Boolean(moreActionsAnchor)} onClose={() => setMoreActionsAnchor(null)}>
-            <MenuItem onClick={() => handleMoreAction('Return All Items')}>Return All Items</MenuItem>
-            <MenuItem onClick={() => handleMoreAction('Attach Photo Evidence')}>Attach Photo Evidence</MenuItem>
-            <MenuItem onClick={() => handleMoreAction('Cancel Return')}>Cancel Return</MenuItem>
+            <MenuItem onClick={handleReturnAll}>Return All Items</MenuItem>
+            <MenuItem onClick={handleOpenEvidence}>Attach Photo Evidence{evidence.length > 0 ? ` (${evidence.length})` : ''}</MenuItem>
+            <MenuItem onClick={handleOpenCancel}>Cancel Return</MenuItem>
           </Menu>
         </Stack>
       </Stack>
@@ -314,6 +436,7 @@ export default function SalesReturnPage() {
             printSettingsEnabled={printSettingsEnabled}
             onTogglePrintSettings={setPrintSettingsEnabled}
             disabled={cart.length === 0 || !originalInvoice || isProcessing}
+            printDisabled={!lastReturn && (cart.length === 0 || !originalInvoice)}
           />
         </Grid>
       </Grid>
@@ -325,6 +448,22 @@ export default function SalesReturnPage() {
         isLoading={isLookingUp}
         error={dialogError}
       />
+
+      <EvidenceDialog open={evidenceOpen} onClose={() => setEvidenceOpen(false)} photos={evidence} onChange={setEvidence} />
+
+      <Dialog open={cancelOpen} onClose={() => setCancelOpen(false)}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Cancel this return?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This discards the invoice, selected items, reason, refund details and attached photos on screen.
+            Nothing has been saved yet, so stock and refunds are not affected.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setCancelOpen(false)}>Keep editing</Button>
+          <Button color="error" variant="contained" onClick={handleConfirmCancel}>Cancel return</Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

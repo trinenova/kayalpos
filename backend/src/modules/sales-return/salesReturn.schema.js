@@ -27,3 +27,12 @@ export const createSalesReturnSchema = z
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['refundTo'], message: 'Select where the refund is going' });
     }
   });
+
+// One evidence photo, sent as a data URL (the app has no multipart parser; the
+// frontend downsizes photos first so a single one is well under the 2mb JSON
+// body limit). The service re-validates the decoded bytes.
+export const evidenceUploadSchema = z.object({
+  fileName: z.string().trim().min(1, 'File name is required').max(200),
+  dataUrl: z.string().regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/, 'Only JPEG, PNG or WebP images are allowed')
+    .max(1_500_000, 'Photo is too large'),
+});

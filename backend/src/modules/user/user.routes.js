@@ -10,18 +10,31 @@ const router = Router();
 const SALT_ROUNDS = 10;
 
 // passwordHash / pinHash are never serialised.
-const toDto = (user) => ({
+const toDto = (user, outletName = new Map()) => ({
   id: user.id,
   username: user.username,
   name: user.name,
   roleId: user.roleId,
   roleName: user.appRole?.name || 'Administrator',
+  // Empty = access to every outlet.
+  outletIds: (user.outletIds || []).filter((id) => outletName.has(id)),
+  outletNames: (user.outletIds || []).map((id) => outletName.get(id)).filter(Boolean),
   isActive: user.isActive,
   lastLogin: user.lastLogin,
   createdAt: user.createdAt,
 });
 
 const include = { appRole: { select: { name: true } } };
+
+const outletNameMap = async (tenantId) => new Map(
+  (await prisma.outlet.findMany({ where: { tenantId }, select: { id: true, name: true } })).map((o) => [o.id, o.name]),
+);
+
+async function assertOutletsBelongToTenant(tenantId, outletIds = []) {
+  if (!outletIds.length) return;
+  const count = await prisma.outlet.count({ where: { tenantId, id: { in: outletIds } } });
+  if (count !== new Set(outletIds).size) throw new ApiError(400, 'One or more selected outlets do not exist');
+}
 
 async function assertRoleBelongsToTenant(tenantId, roleId) {
   if (!roleId) return;
@@ -41,7 +54,8 @@ router.get('/', async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
       include,
     });
-    res.json({ success: true, data: rows.map(toDto) });
+    const names = await outletNameMap(req.user.tenantId);
+    res.json({ success: true, data: rows.map((u) => toDto(u, names)) });
   } catch (err) { next(err); }
 });
 
@@ -49,6 +63,7 @@ router.post('/', validateRequest(createUserSchema), async (req, res, next) => {
   try {
     const { password, ...data } = req.body;
     await assertRoleBelongsToTenant(req.user.tenantId, data.roleId);
+    await assertOutletsBelongToTenant(req.user.tenantId, data.outletIds);
     const user = await prisma.user.create({
       data: {
         ...data,
@@ -58,7 +73,7 @@ router.post('/', validateRequest(createUserSchema), async (req, res, next) => {
       },
       include,
     });
-    res.status(201).json({ success: true, data: toDto(user) });
+    res.status(201).json({ success: true, data: toDto(user, await outletNameMap(req.user.tenantId)) });
   } catch (err) { next(mapWriteError(err)); }
 });
 
@@ -75,8 +90,13 @@ router.put('/:id', validateRequest(updateUserSchema), async (req, res, next) => 
       if ((data.roleId || null) !== (existing.roleId || null)) {
         throw new ApiError(400, 'You cannot change your own role');
       }
+      // ...nor restrict themselves out of the outlet they are currently using.
+      if (data.outletIds?.length && req.user.outletId && !data.outletIds.includes(req.user.outletId)) {
+        throw new ApiError(400, 'Your own access must include the outlet you are currently signed in to');
+      }
     }
     await assertRoleBelongsToTenant(req.user.tenantId, data.roleId);
+    await assertOutletsBelongToTenant(req.user.tenantId, data.outletIds);
 
     const user = await prisma.user.update({
       where: { id: existing.id },
@@ -87,7 +107,7 @@ router.put('/:id', validateRequest(updateUserSchema), async (req, res, next) => 
       },
       include,
     });
-    res.json({ success: true, data: toDto(user) });
+    res.json({ success: true, data: toDto(user, await outletNameMap(req.user.tenantId)) });
   } catch (err) { next(mapWriteError(err)); }
 });
 
@@ -103,7 +123,7 @@ router.delete('/:id', async (req, res, next) => {
       data: { isActive: false, updatedBy: req.user.name },
       include,
     });
-    res.json({ success: true, data: toDto(user) });
+    res.json({ success: true, data: toDto(user, await outletNameMap(req.user.tenantId)) });
   } catch (err) { next(err); }
 });
 

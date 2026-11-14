@@ -14,6 +14,15 @@ export function loadPersistedAuth() {
   return null;
 }
 
+// True when the current session was saved with "Remember me" (localStorage).
+export function isPersistentSession() {
+  try {
+    return Boolean(localStorage.getItem(STORAGE_KEY));
+  } catch {
+    return false;
+  }
+}
+
 export function persistAuth(authState, rememberMe) {
   const storage = rememberMe ? localStorage : sessionStorage;
   const other = rememberMe ? sessionStorage : localStorage;

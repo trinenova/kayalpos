@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../../config/env.js';
+import { prisma } from '../../config/prisma.js';
 
 // WebSocket hub: browsers connect to /ws/notifications?token=<JWT> and every
 // notification created for their tenant is pushed to them instantly.
@@ -9,12 +10,15 @@ const socketsByTenant = new Map();
 
 export const WS_PATH = '/ws/notifications';
 
-export function broadcast(tenantId, payload) {
+export function broadcast(tenantId, payload, outletId = null) {
   const set = socketsByTenant.get(tenantId);
   if (!set) return;
   const data = JSON.stringify(payload);
   for (const socket of set) {
-    if (socket.readyState === 1) socket.send(data);
+    if (socket.readyState !== 1) continue;
+    // Users limited to certain outlets only get events from those outlets (or tenant-wide ones).
+    if (outletId && socket.allowedOutlets?.length && !socket.allowedOutlets.includes(outletId)) continue;
+    socket.send(data);
   }
 }
 
@@ -50,6 +54,10 @@ export async function attachNotificationHub(server) {
 
     wss.handleUpgrade(req, socket, head, (ws) => {
       ws.tenantId = user.tenantId;
+      ws.allowedOutlets = [];
+      prisma.user.findUnique({ where: { id: user.id }, select: { outletIds: true } })
+        .then((u) => { ws.allowedOutlets = u?.outletIds || []; })
+        .catch(() => {});
       ws.isAlive = true;
       let set = socketsByTenant.get(user.tenantId);
       if (!set) socketsByTenant.set(user.tenantId, (set = new Set()));

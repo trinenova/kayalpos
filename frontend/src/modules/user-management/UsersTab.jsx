@@ -29,7 +29,7 @@ export default function UsersTab() {
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return users;
-    return users.filter((u) => [u.name, u.username, u.roleName].some((v) => String(v || '').toLowerCase().includes(q)));
+    return users.filter((u) => [u.name, u.username, u.roleName, ...(u.outletNames || [])].some((v) => String(v || '').toLowerCase().includes(q)));
   }, [users, search]);
 
   const handleDeactivate = async (user) => {
@@ -68,6 +68,7 @@ export default function UsersTab() {
               <TableCell>Name</TableCell>
               <TableCell>Username</TableCell>
               <TableCell>Role</TableCell>
+              <TableCell>Outlets</TableCell>
               <TableCell>Last Login</TableCell>
               <TableCell>Status</TableCell>
               <TableCell align="right">Action</TableCell>
@@ -75,11 +76,11 @@ export default function UsersTab() {
           </TableHead>
           <TableBody>
             {isLoading && (
-              <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
             )}
             {!isLoading && rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography variant="body2" sx={{ color: 'text.secondary' }}>No users found.</Typography>
                 </TableCell>
               </TableRow>
@@ -89,6 +90,20 @@ export default function UsersTab() {
                 <TableCell sx={{ fontWeight: 700 }}>{user.name}{user.id === me?.id ? ' (you)' : ''}</TableCell>
                 <TableCell>{user.username}</TableCell>
                 <TableCell>{user.roleName}</TableCell>
+                <TableCell>
+                  {user.outletNames?.length ? (
+                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
+                      {user.outletNames.slice(0, 2).map((n) => <Chip key={n} label={n} size="small" variant="outlined" sx={{ height: 22 }} />)}
+                      {user.outletNames.length > 2 && (
+                        <Tooltip title={user.outletNames.slice(2).join(', ')}>
+                          <Chip label={`+${user.outletNames.length - 2}`} size="small" sx={{ height: 22 }} />
+                        </Tooltip>
+                      )}
+                    </Stack>
+                  ) : (
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>All outlets</Typography>
+                  )}
+                </TableCell>
                 <TableCell sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>{formatDate(user.lastLogin)}</TableCell>
                 <TableCell>
                   <Chip

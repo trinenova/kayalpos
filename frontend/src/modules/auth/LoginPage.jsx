@@ -110,7 +110,7 @@ export default function LoginPage() {
             inset: 0,
             width: '100%',
             height: '100%',
-            objectFit: 'fit',
+            objectFit: 'fill',
           }}
         />
         <Box sx={{ position: 'relative', height: '100%', width: '60%' }}>
@@ -151,20 +151,21 @@ export default function LoginPage() {
             px: { xs: 3, sm: 4, md: 5 },
             py: { xs: 3, sm: 4, md: 4 },
             borderRadius: 4,
+            // Glass card on desktop (blurred, semi-transparent so the photo
+            // shows through) — tinted to match whichever mode is active,
+            // so dark mode gets a dark-tinted glass card instead of a
+            // white one with unreadable light-on-light text, and light
+            // mode keeps the original near-white glass look.
             bgcolor: {
               xs: 'background.paper',
-              md: (t) => (t.palette.mode === 'dark' ? 'rgba(26, 31, 43, 0.88)' : 'rgba(255, 255, 255, 0.96)'),
+              md: 'rgba(241, 251, 255, 0.73)',
             },
-            backdropFilter: { md: 'blur(16px)' },
+            backdropFilter: { md: 'blur(22px)' },
+            WebkitBackdropFilter: { md: 'blur(22px)' },
             border: {
-              md: (t) => `1px solid ${t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.6)'}`,
+              md: '1px solid rgba(255, 255, 255, 0.75)',
             },
-            // Chrome autofill blue tint fix
-            '& input:-webkit-autofill': {
-              WebkitBoxShadow: (t) =>
-                `0 0 0 100px ${t.palette.mode === 'dark' ? '#1e293b' : '#f8fafc'} inset !important`,
-              WebkitTextFillColor: (t) => `${t.palette.text.primary} !important`,
-            },
+            boxShadow: '0 12px 40px rgba(0, 0, 0, 0.16)',
           }}
         >
           <Stack spacing={1.75} sx={{ width: '100%' }}>
@@ -174,22 +175,10 @@ export default function LoginPage() {
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Welcome to <Box component="span" sx={{ color: 'primary.main' }}>Nexora</Box> POS
                 </Typography>
-                <Box
-                  sx={{
-                    display: 'inline-block',
-                    mt: 0.75,
-                    px: 2,
-                    py: 0.4,
-                    borderRadius: 5,
-                    bgcolor: (t) => (t.palette.mode === 'dark' ? 'rgba(249, 115, 22, 0.15)' : '#FFF7ED'),
-                    border: '1px solid',
-                    borderColor: (t) => (t.palette.mode === 'dark' ? 'rgba(249, 115, 22, 0.3)' : '#FFEDD5'),
-                  }}
-                >
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.8rem' }}>
-                    {TENANT_NAME}
-                  </Typography>
-                </Box>
+                <Box sx={{ width: 44, height: 3, bgcolor: 'primary.main', borderRadius: 1, mx: 'auto', mt: 0.5 }} />
+                <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 600, color: 'text.secondary' }}>
+                  {TENANT_NAME}
+                </Typography>
               </Box>
             </Stack>
 
@@ -285,8 +274,8 @@ export default function LoginPage() {
               </Box>
             </FormProvider>
 
-            <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.secondary', fontSize: '0.72rem' }}>
-              Version {APP_VERSION} • © 2026 Techconz Nexora Pvt Ltd. All Rights Reserved.
+            <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.secondary' }}>
+              Version {APP_VERSION}
             </Typography>
           </Stack>
         </Paper>

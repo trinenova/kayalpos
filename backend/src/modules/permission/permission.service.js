@@ -17,12 +17,15 @@ export async function getAccess(userId) {
   });
   if (!user || !user.isActive) throw new ApiError(401, 'Invalid or expired session');
 
+  // Outlets this user is limited to ([] = every outlet).
+  const allowedOutletIds = user.outletIds || [];
+
   if (!user.roleId || !user.appRole) {
-    return { isSuperAdmin: true, roleId: null, roleName: 'Administrator', permissions: {} };
+    return { isSuperAdmin: true, roleId: null, roleName: 'Administrator', permissions: {}, allowedOutletIds };
   }
   if (!user.appRole.isActive) {
     return {
-      isSuperAdmin: false, roleId: user.roleId, roleName: user.appRole.name, permissions: {},
+      isSuperAdmin: false, roleId: user.roleId, roleName: user.appRole.name, permissions: {}, allowedOutletIds,
     };
   }
   return {
@@ -30,6 +33,7 @@ export async function getAccess(userId) {
     roleId: user.roleId,
     roleName: user.appRole.name,
     permissions: normalizePermissions(user.appRole.permissions),
+    allowedOutletIds,
   };
 }
 

@@ -27,16 +27,25 @@ function DetailField({ label, value, valueColor }) {
  * TransferDetailsCard/IndentDetailsCard's own items table).
  */
 export default function StockReceiptDetailsCard({ receipt }) {
+  const money = (v) => (v == null ? '-' : formatCurrency(v, { decimals: true }));
   const itemColumns = [
     { key: 'index', label: '#', render: (_row, i) => i + 1 },
     { key: 'code', label: 'Item Code' },
+    { key: 'barcode', label: 'Barcode' },
     { key: 'name', label: 'Item Name' },
+    { key: 'hsn', label: 'HSN' },
     { key: 'uom', label: 'UoM' },
+    { key: 'warehouse', label: 'Warehouse' },
+    { key: 'batchNo', label: 'Batch No.' },
+    { key: 'expiry', label: 'Expiry' },
     { key: 'orderedQty', label: 'Ordered Qty', align: 'right', render: (row) => row.orderedQty.toFixed(2) },
     { key: 'receivedQty', label: 'Received Qty', align: 'right', render: (row) => row.receivedQty.toFixed(2) },
-    { key: 'mrp', label: 'MRP (₹)', align: 'right', render: (row) => (row.mrp == null ? '-' : formatCurrency(row.mrp, { decimals: true })) },
-    { key: 'unitCost', label: 'Unit Cost (₹)', align: 'right', render: (row) => formatCurrency(row.unitCost, { decimals: true }) },
-    { key: 'totalCost', label: 'Total Cost (₹)', align: 'right', render: (row) => formatCurrency(row.totalCost, { decimals: true }) },
+    { key: 'mrp', label: 'MRP (₹)', align: 'right', render: (row) => money(row.mrp) },
+    { key: 'sellingPrice', label: 'Selling Price (₹)', align: 'right', render: (row) => money(row.sellingPrice) },
+    { key: 'unitCost', label: 'Unit Cost (₹)', align: 'right', render: (row) => money(row.unitCost) },
+    { key: 'discount', label: 'Disc %', align: 'right', render: (row) => row.discount.toFixed(2) },
+    { key: 'tax', label: 'Tax %', align: 'right', render: (row) => row.tax.toFixed(2) },
+    { key: 'totalCost', label: 'Total Cost (₹)', align: 'right', render: (row) => money(row.totalCost) },
   ];
 
   return (
@@ -73,6 +82,9 @@ export default function StockReceiptDetailsCard({ receipt }) {
               <DetailField label="From Outlet / HO" value={receipt.fromOutlet} />
               <DetailField label="Contact Person" value={receipt.contactPerson} />
               <DetailField label="Mobile No." value={receipt.mobileNo} />
+              <DetailField label="Cost Center" value={receipt.costCenter} />
+              <DetailField label="Reference No." value={receipt.referenceNo} />
+              <DetailField label="Received By" value={receipt.receivedBy} />
             </Stack>
             <Stack spacing={2} sx={{ flex: 1, minWidth: 0 }}>
               <DetailField label="Invoice No." value={receipt.invoiceNo} />
@@ -80,8 +92,13 @@ export default function StockReceiptDetailsCard({ receipt }) {
               <DetailField label="GRN / DC No." value={receipt.grnDcNo} />
               <DetailField label="Vehicle No." value={receipt.vehicleNo} />
               <DetailField label="Transporter" value={receipt.transporter} />
+              <DetailField label="Delivery Challan No." value={receipt.deliveryChallanNo} />
+              <DetailField label="Delivery Date" value={receipt.deliveryDate} />
+              <DetailField label="Received On" value={receipt.receivedOn} />
             </Stack>
           </Stack>
+
+          <DetailField label="Remarks" value={receipt.remarks} />
 
           <Stack direction="row" spacing={3}>
             <DetailField label="Items" value={formatNumber(receipt.items)} />

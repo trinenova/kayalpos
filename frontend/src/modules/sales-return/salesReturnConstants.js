@@ -1,7 +1,6 @@
 /**
  * Fixed option lists for the Sales Return form — these are dropdown choices,
- * not business data, so (unlike salesReturnMockData.js, which this module no
- * longer imports from) they aren't something a real backend module would
+ * not business data, so they aren't something a real backend module would
  * ever "replace". Values must match backend/src/modules/sales-return's
  * createSalesReturnSchema.js enums exactly.
  */

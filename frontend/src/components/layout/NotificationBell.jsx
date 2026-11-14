@@ -93,7 +93,13 @@ function useNotificationSocket(token, onNotification) {
       closed = true;
       clearTimeout(timer);
       setConnected(false);
-      if (ws) { ws.onclose = null; ws.close(); }
+      if (ws) {
+        ws.onclose = null;
+        // Closing a socket that is still connecting logs a console warning
+        // (React StrictMode mounts twice in dev) — close it once it opens.
+        if (ws.readyState === WebSocket.CONNECTING) ws.onopen = () => ws.close();
+        else ws.close();
+      }
     };
   }, [token]);
 

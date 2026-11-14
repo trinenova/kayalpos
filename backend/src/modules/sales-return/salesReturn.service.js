@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { prisma } from '../../config/prisma.js';
 import { ApiError } from '../../middleware/errorHandler.js';
 import { billIdOf, lineIdOf, parseBillId, parseLineId } from '../sale/tczIds.js';
@@ -207,4 +209,86 @@ function toReturnDto(row) {
       saleLineId: lineIdOf(itemDocEntry, lineId),
     })),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Photo evidence. Metadata lives in the generic Attachment/AttachmentFile
+// tables (SalesReturn.attachmentEntry -> Attachment.docEntry); the bytes are
+// written under UPLOAD_DIR (default ./uploads), in a tenant/return-scoped
+// folder. The extension comes from the validated MIME type, never from the
+// client's file name, and every lookup is tenant-scoped.
+// ---------------------------------------------------------------------------
+const MAX_EVIDENCE_PER_RETURN = 5;
+const MAX_EVIDENCE_BYTES = 1_000_000;
+const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+const uploadRoot = () => path.resolve(process.cwd(), process.env.UPLOAD_DIR || 'uploads');
+
+async function findReturnOr404(tenantId, id) {
+  const row = await prisma.salesReturn.findFirst({ where: { id, tenantId }, select: { id: true, attachmentEntry: true } });
+  if (!row) throw new ApiError(404, 'Sales return not found');
+  return row;
+}
+
+const toEvidenceDto = (f) => ({
+  lineId: f.lineId,
+  fileName: f.fileName,
+  contentType: f.contentType,
+  fileSize: Number(f.fileSize || 0),
+  uploadedDate: f.uploadedDate,
+});
+
+export async function listReturnEvidence(tenantId, returnId) {
+  const ret = await findReturnOr404(tenantId, returnId);
+  if (!ret.attachmentEntry) return [];
+  const files = await prisma.attachmentFile.findMany({ where: { docEntry: ret.attachmentEntry }, orderBy: { lineId: 'asc' } });
+  return files.map(toEvidenceDto);
+}
+
+export async function addReturnEvidence(tenantId, returnId, { fileName, dataUrl }, actor) {
+  const ret = await findReturnOr404(tenantId, returnId);
+  const match = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(dataUrl);
+  if (!match) throw new ApiError(400, 'Only JPEG, PNG or WebP images are allowed');
+  const buffer = Buffer.from(match[2], 'base64');
+  if (buffer.length === 0 || buffer.length > MAX_EVIDENCE_BYTES) throw new ApiError(400, 'Photo must be under 1 MB');
+
+  const meta = await prisma.$transaction(async (tx) => {
+    let entry = ret.attachmentEntry;
+    if (!entry) {
+      const att = await tx.attachment.create({
+        data: { tenantId, description: 'Sales return photo evidence', createdBy: actor?.name || null },
+      });
+      entry = att.docEntry;
+      await tx.salesReturn.update({ where: { id: ret.id }, data: { attachmentEntry: entry } });
+    }
+    const existing = await tx.attachmentFile.findMany({ where: { docEntry: entry }, select: { lineId: true } });
+    if (existing.length >= MAX_EVIDENCE_PER_RETURN) throw new ApiError(400, `At most ${MAX_EVIDENCE_PER_RETURN} photos per return`);
+    const lineId = existing.reduce((m, f) => Math.max(m, f.lineId), 0) + 1;
+    const relPath = path.join(tenantId, 'sales-return', `${ret.id}-${lineId}.${EXT_BY_MIME[match[1]]}`);
+    return tx.attachmentFile.create({
+      data: {
+        docEntry: entry,
+        lineId,
+        fileName: fileName.slice(0, 200),
+        filePath: relPath,
+        contentType: match[1],
+        fileSize: BigInt(buffer.length),
+        uploadedBy: actor?.name || null,
+      },
+    });
+  });
+
+  const target = path.join(uploadRoot(), meta.filePath);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(target, buffer);
+  return toEvidenceDto(meta);
+}
+
+export async function getReturnEvidenceFile(tenantId, returnId, lineId) {
+  const ret = await findReturnOr404(tenantId, returnId);
+  if (!ret.attachmentEntry) throw new ApiError(404, 'Photo not found');
+  const file = await prisma.attachmentFile.findFirst({ where: { docEntry: ret.attachmentEntry, lineId } });
+  if (!file?.filePath) throw new ApiError(404, 'Photo not found');
+  const abs = path.resolve(uploadRoot(), file.filePath);
+  if (!abs.startsWith(uploadRoot() + path.sep)) throw new ApiError(400, 'Invalid file path');
+  return { absolutePath: abs, contentType: file.contentType, fileName: file.fileName };
 }

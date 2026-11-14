@@ -293,6 +293,9 @@ model User {
   // full administrator (every account that predates RBAC stays that way).
   roleId       String?   @map("RoleId")
   appRole      Role?     @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  // Outlets this user may work in. Empty = every outlet (keeps pre-existing
+  // accounts working unchanged).
+  outletIds    String[]  @default([]) @map("OutletIds")
   lastLogin    DateTime? @map("LastLogin")
   isActive     Boolean   @default(true) @map("IsActive")
   sapRef        String?   @map("SapRef")
@@ -1605,6 +1608,8 @@ model SalesReturn {
   sapRef          String?   @map("SapRef")
   sapSyncStatus   String    @default("Pending") @map("SapSyncStatus")
   sapSyncDate     DateTime? @map("SapSyncDate")
+  // Photo evidence: points at Attachment.docEntry (files in AttachmentFile).
+  attachmentEntry Int?     @map("AttachmentEntry")
   createdAt      DateTime  @default(now()) @map("CreatedAt")
   updatedAt      DateTime  @updatedAt @map("UpdatedAt")
   updatedBy String? @map("UpdatedBy")
@@ -2973,6 +2978,8 @@ model Notification {
   message   String?  @map("Message")
   link      String?  @map("Link")
   dedupeKey String?  @map("DedupeKey")
+  // Outlet the event happened in (null = tenant-wide, e.g. stock alerts).
+  outletId  String?  @map("OutletId")
   createdBy String?  @map("CreatedBy")
   createdAt DateTime @default(now()) @map("CreatedAt")
 
@@ -2980,6 +2987,7 @@ model Notification {
 
   @@unique([tenantId, dedupeKey])
   @@index([tenantId, createdAt])
+  @@index([tenantId, outletId])
 }
 
 model NotificationState {

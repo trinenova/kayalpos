@@ -11,7 +11,7 @@ import EmailWhatsappButtons from '../../../components/common/EmailWhatsappButton
  */
 export default function ReturnActionsCard({
   onProcessReturn, onPrintReturn,
-  printSettingsEnabled, onTogglePrintSettings, disabled,
+  printSettingsEnabled, onTogglePrintSettings, disabled, printDisabled,
 }) {
   return (
     <Paper variant="outlined" sx={{ borderRadius: 3, p: 2, height: '100%' }}>
@@ -33,6 +33,7 @@ export default function ReturnActionsCard({
           size="large"
           fullWidth
           startIcon={<PrintOutlinedIcon />}
+          disabled={printDisabled}
           onClick={onPrintReturn}
         >
           Print Return (F10)
@@ -50,7 +51,7 @@ export default function ReturnActionsCard({
                 onChange={(e) => onTogglePrintSettings(e.target.checked)}
               />
             }
-            label={<Typography variant="body2">Print settings</Typography>}
+            label={<Typography variant="body2">Auto-print after processing</Typography>}
           />
         </Stack>
       </Stack>

@@ -26,3 +26,12 @@ export async function changePasswordHandler(req, res, next) {
     next(err);
   }
 }
+
+export async function switchOutletHandler(req, res, next) {
+  try {
+    const result = await authService.switchOutlet({ userId: req.user.id, outletId: req.body.outletId });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}

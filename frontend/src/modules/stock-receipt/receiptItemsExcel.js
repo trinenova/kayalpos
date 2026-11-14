@@ -9,7 +9,7 @@ import { mapSheetRows, toIsoDate, downloadWorkbook } from '../../utils/excel';
 
 export const ITEM_COLUMNS = [
   'Item Code *', 'Item Name', 'Barcode', 'HSN Code', 'UoM', 'Ordered Qty', 'Received Qty *',
-  'Unit Cost', 'Discount %', 'Tax %', 'Warehouse', 'Batch No', 'Expiry Date', 'Remarks',
+  'MRP', 'Unit Cost', 'Discount %', 'Tax %', 'Warehouse', 'Batch No', 'Expiry Date', 'Remarks',
 ];
 
 const HEADER_FIELDS = {
@@ -20,6 +20,7 @@ const HEADER_FIELDS = {
   uom: 'uom',
   orderedqty: 'orderedQty',
   receivedqty: 'receivedQty', qty: 'receivedQty', quantity: 'receivedQty',
+  mrp: 'mrp',
   unitcost: 'unitCost', cost: 'unitCost', rate: 'unitCost',
   discount: 'discount', tax: 'tax',
   warehouse: 'warehouse',
@@ -29,8 +30,8 @@ const HEADER_FIELDS = {
 };
 
 const EXAMPLE_ROWS = [
-  ['PRD001', '', '', '', 'Nos', 100, 100, 25.5, 0, 5, 'Main Warehouse', 'B-001', '31 Dec 2027', ''],
-  ['PRD002', '', '8901234567890', '', 'Kg', 50, 48, 120, 2, 5, 'Cold Storage', 'B-002', '30 Jun 2027', 'Two units damaged'],
+  ['PRD001', '', '', '', 'Nos', 100, 100, 30, 25.5, 0, 5, 'Main Warehouse', 'B-001', '31 Dec 2027', ''],
+  ['PRD002', '', '8901234567890', '', 'Kg', 50, 48, 140, 120, 2, 5, 'Cold Storage', 'B-002', '30 Jun 2027', 'Two units damaged'],
 ];
 
 const INSTRUCTIONS = [
@@ -40,7 +41,7 @@ const INSTRUCTIONS = [
   ['Received Qty *', 'Yes', 'Must be greater than 0.'],
   ['UoM', 'No', 'Nos, Kg, Ltr or Box (taken from the product when blank).'],
   ['Warehouse', 'No', 'Main Warehouse, Store Front or Cold Storage.'],
-  ['Ordered Qty / Unit Cost / Discount % / Tax %', 'No', 'Numbers. Blank = 0 (Ordered Qty defaults to Received Qty).'],
+  ['Ordered Qty / MRP / Unit Cost / Discount % / Tax %', 'No', 'Numbers. Blank = 0 (Ordered Qty defaults to Received Qty; MRP blank = the product\'s MRP).'],
   ['Expiry Date', 'No', 'e.g. 31 Dec 2027, 31/12/2027 or an Excel date.'],
   ['Barcode', 'No', 'Saved with the line and searchable in Line Sale.'],
 ];
@@ -90,11 +91,12 @@ export function parseReceiptItemRows(rawRows, { findProduct, formatDate, emptyIt
       return;
     }
     const ordered = text(r.orderedQty);
+    const mrp = text(r.mrp);
     const unitCost = text(r.unitCost);
     const discount = text(r.discount);
     const tax = text(r.tax);
-    if (![ordered, unitCost, discount, tax].every(isNum)) {
-      errors.push({ row: r._row, message: `${product.code}: Ordered Qty, Unit Cost, Discount and Tax must be numbers` });
+    if (![ordered, mrp, unitCost, discount, tax].every(isNum)) {
+      errors.push({ row: r._row, message: `${product.code}: Ordered Qty, MRP, Unit Cost, Discount and Tax must be numbers` });
       return;
     }
     if (Number(discount || 0) > 100 || Number(tax || 0) > 100) {
@@ -122,6 +124,7 @@ export function parseReceiptItemRows(rawRows, { findProduct, formatDate, emptyIt
       uom: UOM_VALUES[uomKey] || UOM_VALUES[String(product.uom || '').toLowerCase()] || '',
       orderedQty: ordered === '' ? Number(received).toFixed(2) : Number(ordered).toFixed(2),
       receivedQty: Number(received).toFixed(2),
+      mrp: mrp === '' ? '' : money(mrp),
       unitCost: money(unitCost),
       discount: money(discount),
       tax: money(tax),

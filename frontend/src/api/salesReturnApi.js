@@ -28,9 +28,20 @@ const salesReturnApi = baseApi.injectEndpoints({
         { type: 'CashierPanel', id: 'SUMMARY' },
       ],
     }),
+    // Photo evidence for a saved return — one JSON request per photo (the API
+    // has no multipart parser; the page downsizes photos before sending).
+    SalesReturnEvidenceUpload: builder.mutation({
+      query: ({ returnId, fileName, dataUrl }) => ({
+        url: `/sales-returns/${encodeURIComponent(returnId)}/evidence`,
+        method: 'POST',
+        body: { fileName, dataUrl },
+      }),
+      transformResponse: (response) => response.data,
+    }),
   }),
 });
 
 export const useNextSalesReturnNoQuery = salesReturnApi.useNextSalesReturnNoQuery;
 export const useLazyLookupOriginalInvoiceQuery = salesReturnApi.useLazyLookupOriginalInvoiceQuery;
 export const useCreateSalesReturnMutation = salesReturnApi.useSalesReturnCreateMutation;
+export const useUploadSalesReturnEvidenceMutation = salesReturnApi.useSalesReturnEvidenceUploadMutation;

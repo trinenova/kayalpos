@@ -4,8 +4,9 @@ import { FormProvider, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Stack, Box, Typography, Button, Menu, MenuItem, Grid, Breadcrumbs, Link as MuiLink,
-  Paper, TextField, IconButton, InputAdornment, Divider,
+  Paper, TextField, IconButton, InputAdornment,
 } from '@mui/material';
+import { ThemeProvider, createTheme, useTheme } from '@mui/material/styles';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import AddIcon from '@mui/icons-material/Add';
@@ -98,6 +99,14 @@ export default function CreateStockReceiptPage({ id: propId, onBack }) {
     { value: '', label: 'Select From Outlet / HO', disabled: true },
     ...outlets.map((o) => ({ value: o.id, label: o.name })),
   ], [outlets]);
+
+  // Compact inputs (40px) for the two header cards only — derived from the
+  // current theme, so accent colours and dark mode still apply.
+  const outerTheme = useTheme();
+  const compactTheme = useMemo(
+    () => createTheme(outerTheme, { components: { MuiTextField: { defaultProps: { size: 'small' } } } }),
+    [outerTheme],
+  );
 
   const methods = useForm({
     resolver: zodResolver(createStockReceiptSchema),
@@ -231,99 +240,93 @@ export default function CreateStockReceiptPage({ id: propId, onBack }) {
       </Stack>
 
       <FormProvider {...methods}>
-        <Stack spacing={2} component="form" noValidate>
+        <Stack spacing={1.5} component="form" noValidate>
           {/* One card for the receipt header + supplier/source, one for
               logistics. Every row is a clean 3-up grid (lg) so labels, inputs
-              and the "+" buttons share the same 56px control height and the
+              and the "+" buttons share the same compact 40px control height and the
               columns line up from card to card. */}
-          <Paper variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, sm: 3 } }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2.5 }}>Receipt &amp; Supplier Details</Typography>
+          <ThemeProvider theme={compactTheme}>
+            <Paper variant="outlined" sx={{ borderRadius: 3, p: { xs: 1.5, sm: 2 } }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>Receipt &amp; Supplier Details</Typography>
 
-            <SectionLabel>Receipt</SectionLabel>
-            <Grid container spacing={2.5} sx={{ mb: 3 }}>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
-                <TextField
-                  label="Receipt No."
-                  value={receiptCode || ''}
-                  disabled
-                  fullWidth
-                  slotProps={{
-                    input: {
-                      readOnly: true,
-                      endAdornment: <InputAdornment position="end"><SettingsOutlinedIcon fontSize="small" /></InputAdornment>,
-                    },
-                  }}
-                />
+              <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
+                  <TextField
+                    label="Receipt No."
+                    value={receiptCode || ''}
+                    disabled
+                    fullWidth
+                    slotProps={{
+                      input: {
+                        readOnly: true,
+                        endAdornment: <InputAdornment position="end"><SettingsOutlinedIcon fontSize="small" /></InputAdornment>,
+                      },
+                    }}
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormDatePicker name="receiptDate" label="Receipt Date *" /></Grid>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormSelect name="purchaseType" label="Purchase Type *" options={PURCHASE_TYPE_OPTIONS} /></Grid>
               </Grid>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormDatePicker name="receiptDate" label="Receipt Date *" /></Grid>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormSelect name="purchaseType" label="Purchase Type *" options={PURCHASE_TYPE_OPTIONS} /></Grid>
-            </Grid>
 
-            <Divider sx={{ mb: 2.5 }} />
+              <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <FormSelect name="supplier" label="Supplier *" options={supplierOptions} />
+                    </Box>
+                    <AddButton onClick={handleAddSupplier} label="Add supplier" />
+                  </Stack>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <FormSelect name="fromOutlet" label="From Outlet / HO *" options={outletOptions} />
+                    </Box>
+                    <AddButton onClick={handleAddFromOutlet} label="Add from outlet / HO" />
+                  </Stack>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormTextField name="mobileNo" label="Contact Mobile No." placeholder="Enter Mobile No." /></Grid>
+              </Grid>
 
-            <SectionLabel>Supplier / Source</SectionLabel>
-            <Grid container spacing={2.5} sx={{ mb: 3 }}>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <FormSelect name="supplier" label="Supplier *" options={supplierOptions} />
+              <FormTextField name="receiptRemarks" label="Remarks" placeholder="Enter Remarks (if any)" multiline minRows={2} />
+            </Paper>
+
+            <Paper variant="outlined" sx={{ borderRadius: 3, p: { xs: 1.5, sm: 2 } }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>Other Details</Typography>
+
+              <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormTextField name="referenceNo" label="Reference (if any)" placeholder="Enter Reference" /></Grid>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormTextField name="deliveryChallanNo" label="Delivery Challan No." placeholder="Enter Delivery Challan No." /></Grid>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormDatePicker name="deliveryDate" label="Delivery Date" placeholder="Select Delivery Date" /></Grid>
+              </Grid>
+
+              <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormTextField name="vehicleNo" label="Vehicle No." placeholder="Enter Vehicle No." /></Grid>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormTextField name="transporter" label="Transporter" placeholder="Enter Transporter" /></Grid>
+                <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
+                  <Box
+                    sx={{
+                      display: 'flex', alignItems: 'center', gap: 1.5, height: 40, px: 1.5,
+                      border: '1px solid', borderColor: 'divider', borderRadius: 1,
+                    }}
+                  >
+                    <Button variant="outlined" color="inherit" size="small" component="label" sx={{ flexShrink: 0, textTransform: 'none' }}>
+                      Choose File
+                      <input type="file" hidden onChange={handleAttachmentChange} />
+                    </Button>
+                    <Typography variant="body2" noWrap sx={{ color: attachmentName ? 'text.primary' : 'text.secondary', minWidth: 0 }}>
+                      {attachmentName || 'No file chosen'}
+                    </Typography>
                   </Box>
-                  <AddButton onClick={handleAddSupplier} label="Add supplier" />
-                </Stack>
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <FormSelect name="fromOutlet" label="From Outlet / HO *" options={outletOptions} />
-                  </Box>
-                  <AddButton onClick={handleAddFromOutlet} label="Add from outlet / HO" />
-                </Stack>
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormTextField name="mobileNo" label="Contact Mobile No." placeholder="Enter Mobile No." /></Grid>
-            </Grid>
-
-            <FormTextField name="receiptRemarks" label="Remarks" placeholder="Enter Remarks (if any)" multiline minRows={2} />
-          </Paper>
-
-          <Paper variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, sm: 3 } }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2.5 }}>Other Details</Typography>
-
-            <SectionLabel>Reference</SectionLabel>
-            <Grid container spacing={2.5} sx={{ mb: 3 }}>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormTextField name="referenceNo" label="Reference (if any)" placeholder="Enter Reference" /></Grid>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormTextField name="deliveryChallanNo" label="Delivery Challan No." placeholder="Enter Delivery Challan No." /></Grid>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormDatePicker name="deliveryDate" label="Delivery Date" placeholder="Select Delivery Date" /></Grid>
-            </Grid>
-
-            <Divider sx={{ mb: 2.5 }} />
-
-            <SectionLabel>Transport &amp; Attachment</SectionLabel>
-            <Grid container spacing={2.5} sx={{ mb: 3 }}>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormTextField name="vehicleNo" label="Vehicle No." placeholder="Enter Vehicle No." /></Grid>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}><FormTextField name="transporter" label="Transporter" placeholder="Enter Transporter" /></Grid>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
-                <Box
-                  sx={{
-                    display: 'flex', alignItems: 'center', gap: 1.5, height: 56, px: 1.5,
-                    border: '1px solid', borderColor: 'divider', borderRadius: 1,
-                  }}
-                >
-                  <Button variant="outlined" color="inherit" size="small" component="label" sx={{ flexShrink: 0, textTransform: 'none' }}>
-                    Choose File
-                    <input type="file" hidden onChange={handleAttachmentChange} />
-                  </Button>
-                  <Typography variant="body2" noWrap sx={{ color: attachmentName ? 'text.primary' : 'text.secondary', minWidth: 0 }}>
-                    {attachmentName || 'No file chosen'}
+                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.5, ml: 1.5 }}>
+                    Attachment · Max file size: 5MB
                   </Typography>
-                </Box>
-                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.5, ml: 1.5 }}>
-                  Attachment · Max file size: 5MB
-                </Typography>
+                </Grid>
               </Grid>
-            </Grid>
 
-            <FormTextField name="otherRemarks" label="Remarks" placeholder="Enter Remarks (if any)" multiline minRows={2} />
-          </Paper>
+              <FormTextField name="otherRemarks" label="Remarks" placeholder="Enter Remarks (if any)" multiline minRows={2} />
+            </Paper>
+          </ThemeProvider>
 
           <Paper variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, sm: 2.5 } }}>
             <ReceiptItemsTable onAddItem={handleAddItemRow} products={products} />
@@ -372,25 +375,13 @@ function NotesField() {
   );
 }
 
-// Small caps caption introducing a group of fields inside a merged card.
-function SectionLabel({ children }) {
-  return (
-    <Typography
-      variant="overline"
-      sx={{ display: 'block', color: 'text.secondary', fontWeight: 700, letterSpacing: 0.8, lineHeight: 1.5, mb: 1.5 }}
-    >
-      {children}
-    </Typography>
-  );
-}
-
-// Square "+" button sized to sit flush with a 56px select.
+// Square "+" button sized to sit flush with a 40px select.
 function AddButton({ onClick, label }) {
   return (
     <IconButton
       onClick={onClick}
       aria-label={label}
-      sx={{ width: 56, height: 56, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}
+      sx={{ width: 40, height: 40, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}
     >
       <AddIcon fontSize="small" />
     </IconButton>
