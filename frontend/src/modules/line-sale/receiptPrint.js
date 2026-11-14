@@ -161,8 +161,8 @@ export function buildReceiptHtml({
 ${buildAddressHtml(company)}
   ${locationLine ? `<div class="center">${esc(locationLine)}</div>` : ''}
   ${phoneLine ? `<div class="center">Ph: ${esc(phoneLine)}</div>` : ''}
-  ${company?.gstin ? `<div class="center">GSTIN: ${esc(company.gstin)}</div>` : ''}
-  ${company?.fssaiNo ? `<div class="center">FSSAI No: ${esc(company.fssaiNo)}</div>` : ''}
+  ${company?.gstin ? `<div class="row"><span>GSTIN:</span><span>${esc(company.gstin)}</span></div>` : ''}
+  ${company?.fssaiNo ? `<div class="row"><span>FSSAI No:</span><span>${esc(company.fssaiNo)}</span></div>` : ''}
 
   <div class="divider"></div>
   <div class="row"><span>Bill No: ${esc(billNo)}</span></div>
@@ -349,7 +349,7 @@ export function buildReturnReceiptHtml({
 ${buildAddressHtml(company)}
   ${locationLine ? `<div class="center">${esc(locationLine)}</div>` : ''}
   ${phoneLine ? `<div class="center">Ph: ${esc(phoneLine)}</div>` : ''}
-  ${company?.gstin ? `<div class="center">GSTIN: ${esc(company.gstin)}</div>` : ''}
+  ${company?.gstin ? `<div class="row"><span>GSTIN:</span><span>${esc(company.gstin)}</span></div>` : ''}
 
   <div class="divider"></div>
   <div class="center bold">SALES RETURN${isPreview ? ' (PREVIEW)' : ''}</div>

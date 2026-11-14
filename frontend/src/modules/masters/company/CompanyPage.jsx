@@ -250,7 +250,7 @@ export default function CompanyPage() {
                       <FormTextField name="registrationNo" label="Registration No." {...disabledProps} />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
-                      <FormSelect name="state" label="State *" options={STATE_OPTIONS} {...disabledProps} />
+                      <FormSelect name="state" label="State" options={STATE_OPTIONS} {...disabledProps} />
                     </Grid>
 
                     <Grid size={{ xs: 12, sm: 6 }}>

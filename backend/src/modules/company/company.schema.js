@@ -18,7 +18,7 @@ export const companyProfileSchema = z.object({
   companyType: z.string().trim().optional(),
   financialYearStart: z.string().trim().min(1, 'Financial year start is required'),
   country: z.string().trim().min(1, 'Country is required'),
-  state: z.string().trim().min(1, 'State is required'),
+  state: z.string().trim().optional().default(''),
   currency: z.string().trim().min(1, 'Currency is required'),
   phone: z.string().trim().optional(),
   mobile: z.string().trim().optional(),

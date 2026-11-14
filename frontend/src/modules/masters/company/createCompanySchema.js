@@ -19,7 +19,7 @@ export const COUNTRY_OPTIONS = [
 ];
 
 export const STATE_OPTIONS = [
-  { value: '', label: 'Select State', disabled: true },
+  { value: '', label: 'Select State' },
   { value: 'Tamil Nadu', label: 'Tamil Nadu' },
   { value: 'Karnataka', label: 'Karnataka' },
   { value: 'Kerala', label: 'Kerala' },
@@ -65,7 +65,8 @@ export const createCompanySchema = z.object({
   financialYearStart: z.string().trim().min(1, 'Financial year start is required')
     .refine((v) => Boolean(parsePickerDate(v)), 'Enter a valid date'),
   country: z.string().trim().refine((v) => COUNTRY_VALUES.includes(v), 'Select a country'),
-  state: z.string().trim().refine((v) => STATE_VALUES.includes(v), 'Select a state'),
+  // Optional: blank is allowed; if a state is chosen it must be one of the options.
+  state: z.string().trim().refine((v) => v === '' || STATE_VALUES.includes(v), 'Select a valid state'),
   currency: z.string().trim().refine((v) => CURRENCY_VALUES.includes(v), 'Select a currency'),
   phone: z.string().trim().optional(),
   mobile: z.string().trim().optional(),
