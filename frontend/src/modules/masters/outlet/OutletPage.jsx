@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useCompanyProfileQuery } from '../../../api/companyApi';
 import { Link as RouterLink } from 'react-router-dom';
 import { FormProvider, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -38,7 +39,7 @@ import ContactPersonFormDialog from '../company/components/ContactPersonFormDial
 import OutletLogoCard from './components/OutletLogoCard';
 import {
   createOutletSchema, createOutletDefaultValues, outletToFormValues, outletFormValuesToPayload,
-  OUTLET_TYPE_OPTIONS, COMPANY_OPTIONS, STATE_OPTIONS, CITY_OPTIONS, STATUS_OPTIONS,
+  OUTLET_TYPE_OPTIONS, STATE_OPTIONS, CITY_OPTIONS, STATUS_OPTIONS,
 } from './createOutletSchema';
 
 const LIST_COLUMNS = ['Code', 'Name', 'Type', 'City', 'State', 'Phone', 'Status', 'Action'];
@@ -106,6 +107,23 @@ export default function OutletPage() {
     mode: 'onTouched',
   });
   const { handleSubmit, reset, setValue } = methods;
+
+  // Company comes from the Company master (Masters > Company), not a fixed
+  // list. A new outlet defaults to it; an existing outlet keeps whatever
+  // company name it already has even if that differs from the master's.
+  const { data: companyProfile } = useCompanyProfileQuery();
+  const masterCompanyName = companyProfile?.companyName || '';
+  const selectedCompany = methods.watch('company');
+  const companyOptions = useMemo(() => {
+    const names = [masterCompanyName, selectedCompany].filter(Boolean);
+    return [
+      { value: '', label: 'Select Company', disabled: true },
+      ...[...new Set(names)].map((n) => ({ value: n, label: n })),
+    ];
+  }, [masterCompanyName, selectedCompany]);
+  useEffect(() => {
+    if (isNew && masterCompanyName && !selectedCompany) setValue('company', masterCompanyName);
+  }, [isNew, masterCompanyName, selectedCompany, setValue]);
 
   // Resets the form to the real outlet once it loads. Guarded on `outlet`
   // itself (not just `!isFetching`) — right after switching into the
@@ -443,7 +461,7 @@ export default function OutletPage() {
                       <FormTextField name="outletName" label="Outlet Name *" {...disabledProps} />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
-                      <FormSelect name="company" label="Company *" options={COMPANY_OPTIONS} {...disabledProps} />
+                      <FormSelect name="company" label="Company *" options={companyOptions} {...disabledProps} />
                     </Grid>
 
                     <Grid size={{ xs: 12, sm: 6 }}>

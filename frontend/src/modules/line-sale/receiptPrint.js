@@ -154,6 +154,7 @@ export function buildReceiptHtml({
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 1px 2px; text-align: left; font-size: 11px; font-weight: 700; }
   td.num, th.num { text-align: right; }
+  tbody.items td { font-size: 14px; padding: 2px 2px; }
   .row { display: flex; justify-content: space-between; }
   /* centered block; label | colon | value cells so the colons form one straight column */
   .kvbox { display: table; margin: 0 auto; }
@@ -186,7 +187,7 @@ ${buildAddressHtml(company)}
         <th class="num">Value</th>
       </tr>
     </thead>
-    <tbody>${itemRows}</tbody>
+    <tbody class="items">${itemRows}</tbody>
   </table>
   <div class="divider"></div>
 
@@ -379,7 +380,7 @@ ${buildAddressHtml(company)}
     <thead>
       <tr><th>Item Name</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Value</th></tr>
     </thead>
-    <tbody>${itemRows}</tbody>
+    <tbody class="items">${itemRows}</tbody>
   </table>
   <div class="divider"></div>
 
