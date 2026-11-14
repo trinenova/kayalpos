@@ -65,6 +65,7 @@
     "warehouse": { "label": "Warehouse", "description": "Manage warehouses and locations." },
     "product": { "label": "Product", "description": "Create and manage inventory items." },
     "brand": { "label": "Brand", "description": "Manage item brands and brand details." },
+    "itemGroup": { "label": "Item Group", "description": "Manage product item groups." },
     "uom": { "label": "UOM", "description": "Define units of measure and UOM groups." },
     "taxCode": { "label": "Tax Code", "description": "Create and manage tax codes." },
     "hsnSac": { "label": "HSN/SAC", "description": "Maintain HSN/SAC codes for items." },

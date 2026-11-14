@@ -42,6 +42,7 @@ model Tenant {
   users               User[]
   roles               Role[]
   brands              Brand[]
+  itemGroups          ItemGroup[]
   products            Product[]
   customers           Customer[]
   suppliers           Supplier[]
@@ -335,6 +336,32 @@ model Brand {
   // then commonly filtered by status or sorted by createdAt — these
   // composite indexes cover both without a full table scan as row counts
   // grow. @@unique([tenantId, code]) above already indexes tenantId+code.
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+}
+
+// Item Group master — the list of groups a product can be filed under
+// (Product.group stores the group's name, the same loose name-reference
+// Product.brand uses for Brand, so renaming a group doesn't rewrite history).
+// `code` is auto-generated (IG0001, IG0002, ...) by the CRUD factory.
+model ItemGroup {
+  id          String       @id @default(cuid()) @map("Id")
+  tenantId    String       @map("TenantId")
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  code        String       @map("Code")
+  name        String       @map("Name")
+  description String?      @map("Description")
+  status      RecordStatus @default(ACTIVE) @map("Status")
+  sapRef        String?   @map("SapRef")
+  sapSyncStatus String    @default("Pending") @map("SapSyncStatus")
+  sapSyncDate   DateTime? @map("SapSyncDate")
+  createdAt   DateTime     @default(now()) @map("CreatedAt")
+  updatedAt   DateTime     @updatedAt @map("UpdatedAt")
+  createdBy String? @map("CreatedBy")
+  updatedBy String? @map("UpdatedBy")
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, name])
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
 }

@@ -10,6 +10,7 @@ import healthRoutes from './modules/health/health.routes.js';
 import outletRoutes from './modules/outlet/outlet.routes.js';
 import warehouseRoutes from './modules/warehouse/warehouse.routes.js';
 import brandRoutes from './modules/brand/brand.routes.js';
+import itemGroupRoutes from './modules/item-group/itemGroup.routes.js';
 import uomGroupRoutes from './modules/uom/uomGroup.routes.js';
 import uomRoutes from './modules/uom/uom.routes.js';
 import taxCodeRoutes from './modules/tax-code/taxCode.routes.js';
@@ -115,6 +116,7 @@ app.use('/api/dashboard', authorize('management-dashboard', { lookup: true }), d
 app.use('/api/outlets', authorize('outlet', { lookup: true, publicRead: true }), notifyOnWrite('outlet'), outletRoutes);
 app.use('/api/warehouses', authorize('warehouse', { lookup: true }), notifyOnWrite('warehouse'), warehouseRoutes);
 app.use('/api/masters/brand', authorize('brand', { lookup: true }), notifyOnWrite('brand'), brandRoutes);
+app.use('/api/masters/item-group', authorize('item-group', { lookup: true }), notifyOnWrite('item-group'), itemGroupRoutes);
 app.use('/api/masters/uom-groups', authorize('uom', { lookup: true }), notifyOnWrite('uom-group'), uomGroupRoutes);
 app.use('/api/masters/uom', authorize('uom', { lookup: true }), notifyOnWrite('uom'), uomRoutes);
 app.use('/api/masters/tax-code', authorize('tax-code', { lookup: true }), notifyOnWrite('tax-code'), taxCodeRoutes);

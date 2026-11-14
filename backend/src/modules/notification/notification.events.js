@@ -32,6 +32,7 @@ export const EVENTS = {
   outlet: { category: 'masters', label: 'Outlet' },
   warehouse: { category: 'masters', label: 'Warehouse' },
   brand: { category: 'masters', label: 'Brand' },
+  'item-group': { category: 'masters', label: 'Item group' },
   'uom-group': { category: 'masters', label: 'UOM group' },
   uom: { category: 'masters', label: 'UOM' },
   'tax-code': { category: 'masters', label: 'Tax code' },

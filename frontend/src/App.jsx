@@ -66,6 +66,7 @@ import WarehousePage from './modules/masters/warehouse/WarehousePage';
 import WarehouseListPage from './modules/masters/warehouse/WarehouseListPage';
 import ProductPage from './modules/masters/product/ProductPage';
 import BrandPage from './modules/masters/brand/BrandPage';
+import ItemGroupPage from './modules/masters/item-group/ItemGroupPage';
 import UomPage from './modules/masters/uom/UomPage';
 import TaxCodePage from './modules/masters/tax-code/TaxCodePage';
 import HsnSacPage from './modules/masters/hsn-sac/HsnSacPage';
@@ -147,6 +148,7 @@ export default function App() {
             <Route path="/masters/warehouse/:id" element={<WarehousePage />} />
             <Route path="/masters/product" element={<ProductPage />} />
             <Route path="/masters/brand" element={<BrandPage />} />
+            <Route path="/masters/item-group" element={<ItemGroupPage />} />
             <Route path="/masters/uom" element={<UomPage />} />
             <Route path="/masters/tax-code" element={<TaxCodePage />} />
             <Route path="/masters/hsn-sac" element={<HsnSacPage />} />

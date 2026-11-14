@@ -86,7 +86,7 @@ export default function MastersPage() {
     dispatch(logout());
     navigate('/login', { replace: true });
   };
-  const BUILT_MASTER_KEYS = ['company', 'outlet', 'warehouse', 'product', 'brand', 'uom', 'tax-code', 'hsn-sac', 'selling-price', 'price-list', 'batch-serial', 'supplier', 'employee'];
+  const BUILT_MASTER_KEYS = ['company', 'outlet', 'warehouse', 'product', 'brand', 'item-group', 'uom', 'tax-code', 'hsn-sac', 'selling-price', 'price-list', 'batch-serial', 'supplier', 'employee'];
   const handleOpen = (item) => {
     if (BUILT_MASTER_KEYS.includes(item.key)) {
       navigate(item.path);

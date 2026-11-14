@@ -36,6 +36,7 @@ import { showToast } from "../../features/ui/uiSlice";
 import { formatCurrency } from "../../utils/format";
 import AddCustomerDialog from "../../components/common/AddCustomerDialog";
 import { useGetProductsQuery } from "../../api/productApi";
+import { useGetItemGroupsQuery } from "../../api/itemGroupApi";
 import { useNextBillNoQuery, useCreateSaleMutation } from "../../api/saleApi";
 import {
   useHeldBillsQuery,
@@ -149,6 +150,14 @@ export default function LineSalePage() {
   const user = useAppSelector(selectCurrentUser);
 
   const { data: products = [] } = useGetProductsQuery({ status: "ACTIVE" });
+  // "Counter" = an Item Group (Masters > Item Group). Picking one limits the
+  // item / barcode search below to that counter's products; "" = all counters.
+  const { data: itemGroups = [] } = useGetItemGroupsQuery({ status: "ACTIVE" });
+  const [counter, setCounter] = useState("");
+  const counterProducts = useMemo(
+    () => (counter ? products.filter((p) => p.group === counter) : products),
+    [products, counter],
+  );
   const {
     data: previewBillNo,
     isLoading: isLoadingBillNo,
@@ -1120,7 +1129,10 @@ export default function LineSalePage() {
                   lines={cart}
                   onQtyChange={handleQtyChange}
                   onRemove={handleRemove}
-                  products={products}
+                  products={counterProducts}
+                  counters={itemGroups.map((g) => g.name)}
+                  counter={counter}
+                  onCounterChange={setCounter}
                   onAddItem={handleAddItem}
                   onReplaceItem={handleReplaceItem}
                   onNotify={(message, severity) => dispatch(showToast(message, severity))}

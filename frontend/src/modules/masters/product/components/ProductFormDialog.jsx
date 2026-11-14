@@ -15,6 +15,7 @@ import FormTextField from '../../../../components/form/FormTextField';
 import FormSelect from '../../../../components/form/FormSelect';
 import FormCheckbox from '../../../../components/form/FormCheckbox';
 import { useGetBrandsQuery } from '../../../../api/brandApi';
+import { useGetItemGroupsQuery } from '../../../../api/itemGroupApi';
 import { useGetTaxCodesQuery } from '../../../../api/taxCodeApi';
 import { useGetUomsQuery } from '../../../../api/uomApi';
 import { useGetHsnSacCodesQuery } from '../../../../api/hsnSacApi';
@@ -23,7 +24,7 @@ import { useGetSellingPricesQuery } from '../../../../api/sellingPriceApi';
 import { useCreateProductMutation, useUpdateProductMutation, useNextProductCode } from '../../../../api/productApi';
 import {
   createProductSchema, createProductDefaultValues, productToFormValues, productFormValuesToPayload,
-  PRODUCT_GROUP_SELECT_OPTIONS, MANAGE_ITEM_BY_SELECT_OPTIONS, TAX_GROUP_SELECT_OPTIONS,
+  MANAGE_ITEM_BY_SELECT_OPTIONS, TAX_GROUP_SELECT_OPTIONS,
   BRAND_PLACEHOLDER_OPTION, TAX_CODE_PLACEHOLDER_OPTION, HSN_PLACEHOLDER_OPTION,
   SUPPLIER_PLACEHOLDER_OPTION, PURCHASING_UOM_PLACEHOLDER_OPTION, SALES_UOM_PLACEHOLDER_OPTION,
   STATUS_OPTIONS,
@@ -56,6 +57,17 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
   const { data: uoms = [] } = useGetUomsQuery(open ? { status: 'ACTIVE' } : undefined, { skip: !open });
   const { data: hsnCodes = [] } = useGetHsnSacCodesQuery(open ? { status: 'ACTIVE' } : undefined, { skip: !open });
   const { data: suppliers = [] } = useGetSuppliersQuery(open ? { status: 'ACTIVE' } : undefined, { skip: !open });
+
+  const { data: itemGroups = [] } = useGetItemGroupsQuery(open ? { status: 'ACTIVE' } : undefined, { skip: !open });
+  // Item Group options come from the Item Group master. Editing a product
+  // whose saved group isn't in the active list (renamed/deactivated, or
+  // bulk-imported text) keeps that value selectable.
+  const itemGroupOptions = useMemo(() => {
+    const options = itemGroups.map((g) => ({ value: g.name, label: g.name }));
+    const existing = isEdit ? initialValues?.group : '';
+    if (existing && !options.some((o) => o.value === existing)) options.push({ value: existing, label: existing });
+    return options;
+  }, [itemGroups, isEdit, initialValues]);
 
   const brandOptions = useMemo(() => {
     const options = [BRAND_PLACEHOLDER_OPTION, ...brands.map((b) => ({ value: b.name, label: b.name }))];
@@ -217,7 +229,7 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
                 <FormTextField name="name" label="Product Name *" placeholder="Enter product name" />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <FormSelect name="group" label="Item Group *" options={[{ value: '', label: 'Select Item Group', disabled: true }, ...PRODUCT_GROUP_SELECT_OPTIONS]} />
+                <FormSelect name="group" label="Item Group *" options={[{ value: '', label: 'Select Item Group', disabled: true }, ...itemGroupOptions]} />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormTextField name="unitPrice" label="Unit Price" placeholder="0" />

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import {
-  Paper, Stack, Box, Typography, Chip, IconButton,
+  Paper, Stack, Box, Typography, Chip, IconButton, TextField, MenuItem,
 } from '@mui/material';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutlineOutlined';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutlineOutlined';
@@ -27,6 +27,7 @@ const BLANK_ROW = { code: BLANK_KEY, blank: true };
  */
 export default function CurrentSaleTable({
   lines, onQtyChange, onRemove, products, onAddItem, onReplaceItem, onNotify,
+  counters = [], counter = '', onCounterChange,
 }) {
   const index = useItemSearchIndex(products);
 
@@ -119,6 +120,21 @@ export default function CurrentSaleTable({
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 2.5, pt: 2, pb: 1.5 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>Current Sale</Typography>
         <Chip label={`${lines.length} ${lines.length === 1 ? 'Item' : 'Items'}`} size="small" sx={{ fontWeight: 700 }} />
+        {onCounterChange && (
+          // Counter = Item Group: limits the item / barcode search to that
+          // counter's products ("All Counters" = no limit).
+          <TextField
+            select
+            size="small"
+            label="Counter"
+            value={counter}
+            onChange={(e) => onCounterChange(e.target.value)}
+            sx={{ ml: 'auto !important', minWidth: 200 }}
+          >
+            <MenuItem value="">All Counters</MenuItem>
+            {counters.map((name) => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+          </TextField>
+        )}
       </Stack>
 
       <Box sx={{ px: 2.5, pb: 2.5, flex: 1, minWidth: 0, overflowY: 'auto', overflowX: 'hidden' }}>

@@ -13,6 +13,7 @@ import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import NumbersOutlinedIcon from '@mui/icons-material/NumbersOutlined';
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
+import CategoryOutlinedIcon from '@mui/icons-material/CategoryOutlined';
 
 /**
  * TEMPORARY mock data for the Masters module. There's no unified Masters
@@ -34,6 +35,7 @@ export const MASTER_ITEMS = [
   { key: 'warehouse', i18nKey: 'warehouse', icon: MoveToInboxOutlinedIcon, color: '#8B5CF6', path: '/masters/warehouse' },
   { key: 'product', i18nKey: 'product', icon: Inventory2OutlinedIcon, color: '#F26B21', path: '/masters/product' },
   { key: 'brand', i18nKey: 'brand', icon: CardGiftcardOutlinedIcon, color: '#E5484D', path: '/masters/brand' },
+  { key: 'item-group', i18nKey: 'itemGroup', icon: CategoryOutlinedIcon, color: '#2563EB', path: '/masters/item-group' },
   { key: 'uom', i18nKey: 'uom', icon: PlaylistAddCheckOutlinedIcon, color: '#0EA5A4', path: '/masters/uom' },
   { key: 'tax-code', i18nKey: 'taxCode', icon: ReceiptOutlinedIcon, color: '#F5A623', path: '/masters/tax-code' },
   { key: 'hsn-sac', i18nKey: 'hsnSac', icon: DescriptionOutlinedIcon, color: '#0EA5A4', path: '/masters/hsn-sac' },

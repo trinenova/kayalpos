@@ -25,7 +25,8 @@ import ProductTable from './components/ProductTable';
 import ProductFormDialog from './components/ProductFormDialog';
 import ProductViewDialog from './components/ProductViewDialog';
 import ProductBulkImportDialog from './components/ProductBulkImportDialog';
-import { PRODUCT_GROUP_OPTIONS, UOM_OPTIONS } from './productMockData';
+import { UOM_OPTIONS } from './productMockData';
+import { useGetItemGroupsQuery } from '../../../api/itemGroupApi';
 import { useGetProductsQuery, useDeleteProductMutation, useInfiniteProducts } from '../../../api/productApi';
 import { useOfflineListSnapshot, buildListCacheKey } from '../../../api/offlineCache';
 
@@ -183,6 +184,13 @@ export default function ProductPage() {
   // list — Product Group/UOM stay tied to PRODUCT_GROUP_OPTIONS/UOM_OPTIONS
   // below since those are also the controlled option lists the Add/Edit
   // dialog writes from (see createProductSchema.js).
+  // Product Group filter lists the Item Group master, plus any group name
+  // still on a product but missing from the master (e.g. bulk-imported).
+  const { data: itemGroupRows = [] } = useGetItemGroupsQuery();
+  const groupFilterOptions = useMemo(
+    () => Array.from(new Set([...itemGroupRows.map((g) => g.name), ...viewRows.map((r) => r.group).filter(Boolean)])).sort(),
+    [itemGroupRows, viewRows],
+  );
   const brandFilterOptions = useMemo(
     () => Array.from(new Set(viewRows.map((r) => r.brand).filter(Boolean))).sort(),
     [viewRows],
@@ -256,7 +264,7 @@ export default function ProductPage() {
           <Grid size={{ xs: 6, sm: 4, md: 1.8 }}>
             <TextField select label="Product Group" value={productGroup} onChange={(e) => setProductGroup(e.target.value)} fullWidth>
               <MenuItem value="All">All</MenuItem>
-              {PRODUCT_GROUP_OPTIONS.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+              {groupFilterOptions.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
             </TextField>
           </Grid>
           <Grid size={{ xs: 6, sm: 4, md: 1.8 }}>
