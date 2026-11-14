@@ -76,6 +76,7 @@ export function toReceiptDetails(row) {
       uom: item.uom || '-',
       orderedQty: num(item.orderedQty),
       receivedQty: num(item.receivedQty),
+      mrp: item.mrp != null ? num(item.mrp) : null,
       unitCost: num(item.unitCost),
       discount: num(item.discount),
       tax: num(item.tax),
@@ -107,6 +108,7 @@ function itemToFormRow(item) {
     uom: item.uom || '',
     orderedQty: item.orderedQty !== null && item.orderedQty !== undefined ? String(item.orderedQty) : '',
     receivedQty: item.receivedQty !== null && item.receivedQty !== undefined ? String(item.receivedQty) : '',
+    mrp: item.mrp !== null && item.mrp !== undefined ? String(item.mrp) : '',
     unitCost: item.unitCost !== null && item.unitCost !== undefined ? String(item.unitCost) : '0.00',
     discount: item.discount !== null && item.discount !== undefined ? String(item.discount) : '0.00',
     tax: item.tax !== null && item.tax !== undefined ? String(item.tax) : '0.00',
@@ -139,6 +141,7 @@ export function receiptToFormValues(row, emptyItemRow) {
     vehicleNo: row.vehicleNo || '',
     transporter: row.transporter || '',
     deliveryChallanNo: row.deliveryChallanNo || '',
+    deliveryDate: row.deliveryDate ? formatPickerDate(new Date(row.deliveryDate)) : '',
     otherRemarks: row.otherRemarks || '',
 
     notes: row.notes || '',
@@ -154,6 +157,7 @@ export function formValuesToPayload(values, { status, isBlankItemRow }) {
   const receiptDate = parsePickerDate(values.receiptDate);
   const purchaseInvoiceDate = values.purchaseInvoiceDate ? parsePickerDate(values.purchaseInvoiceDate) : null;
   const grnDcDate = values.grnDcDate ? parsePickerDate(values.grnDcDate) : null;
+  const deliveryDate = values.deliveryDate ? parsePickerDate(values.deliveryDate) : null;
 
   const items = values.items
     .filter((row) => !isBlankItemRow(row))
@@ -167,6 +171,7 @@ export function formValuesToPayload(values, { status, isBlankItemRow }) {
         uom: row.uom?.trim() || '',
         orderedQty: row.orderedQty ? Number(row.orderedQty) : 0,
         receivedQty: Number(row.receivedQty),
+        mrp: row.mrp ? Number(row.mrp) : null,
         unitCost: row.unitCost ? Number(row.unitCost) : 0,
         discount: row.discount ? Number(row.discount) : 0,
         tax: row.tax ? Number(row.tax) : 0,
@@ -196,6 +201,7 @@ export function formValuesToPayload(values, { status, isBlankItemRow }) {
     vehicleNo: values.vehicleNo?.trim() || '',
     transporter: values.transporter?.trim() || '',
     deliveryChallanNo: values.deliveryChallanNo?.trim() || '',
+    deliveryDate: deliveryDate ? deliveryDate.toISOString() : null,
     otherRemarks: values.otherRemarks?.trim() || '',
 
     notes: values.notes?.trim() || '',

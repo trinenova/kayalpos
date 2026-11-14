@@ -28,7 +28,7 @@ function RowActions({ onAction }) {
         <MoreVertOutlinedIcon fontSize="small" />
       </IconButton>
       <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
-        {['View', 'Edit', 'Print', 'Delete'].map((label) => (
+        {['View', 'Print', 'Delete'].map((label) => (
           <MenuItem key={label} onClick={() => { setAnchor(null); onAction(label); }}>
             {label}
           </MenuItem>

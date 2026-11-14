@@ -30,7 +30,7 @@ import { useHealthStatus } from '../../hooks/useHealthStatus';
 import { useGetPublicOutletsQuery } from '../../api/outletApi';
 import { loginSchema, loginDefaultValues } from './loginSchema';
 import LoginMarketingPanel from './components/LoginMarketingPanel';
-import loginBackground from '../../assets/LoginImage4.png';
+import loginBackground from '../../assets/LoginImage5.png';
 
 const APP_VERSION = '1.0.0';
 const TENANT_NAME = 'Kayal Agro Foods'; // TODO: replace with tenant context once multi-tenant lookup exists
@@ -143,140 +143,140 @@ export default function LoginPage() {
           overflowY: 'auto',
         }}
       >
-          <Paper
-            elevation={8}
-            sx={{
-              width: '100%',
-              maxWidth: 420,
-              px: { xs: 3, sm: 4, md: 5 },
-              py: { xs: 3, sm: 4, md: 4 },
-              borderRadius: 4,
-              // Glass card on desktop (blurred, semi-transparent so the photo
-              // shows through) — tinted to match whichever mode is active,
-              // so dark mode gets a dark-tinted glass card instead of a
-              // white one with unreadable light-on-light text, and light
-              // mode keeps the original near-white glass look.
-              bgcolor: {
-                xs: 'background.paper',
-                md: (t) => (t.palette.mode === 'dark' ? 'rgba(26, 31, 43, 0.85)' : 'rgba(255, 255, 255, 0.95)'),
-              },
-              backdropFilter: { md: 'blur(16px)' },
-              border: {
-                md: (t) => `1px solid ${t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.6)'}`,
-              },
-            }}
-          >
-            <Stack spacing={1.75} sx={{ width: '100%' }}>
-              <Stack spacing={0.75} sx={{ alignItems: 'center' }}>
-                <AppLogo iconSize={32} titleFontSize="1.05rem" subtitleFontSize="0.56rem" />
-                <Box sx={{ textAlign: 'center' }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                    Welcome to <Box component="span" sx={{ color: 'primary.main' }}>Nexora</Box> POS
-                  </Typography>
-                  <Box sx={{ width: 44, height: 3, bgcolor: 'primary.main', borderRadius: 1, mx: 'auto', mt: 0.5 }} />
-                  <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 600, color: 'text.secondary' }}>
-                    {TENANT_NAME}
-                  </Typography>
-                </Box>
-              </Stack>
-
-              <FormProvider {...methods}>
-                <Box component="form" onSubmit={methods.handleSubmit(onSubmit)} noValidate>
-                  <Stack spacing={1.25}>
-                    {serverError && (
-                      <Typography variant="body2" color="error" role="alert">
-                        {serverError}
-                      </Typography>
-                    )}
-
-                    <FormTextField
-                      name="username"
-                      label="Username"
-                      autoComplete="username"
-                      size="small"
-                      slotProps={{
-                        input: {
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <PersonOutlineIcon fontSize="small" />
-                            </InputAdornment>
-                          ),
-                        },
-                      }}
-                    />
-
-                    <FormPasswordField
-                      name="password"
-                      label="Password"
-                      autoComplete="current-password"
-                      size="small"
-                    />
-
-                    <FormSelect
-                      name="outletId"
-                      label="Select Outlet"
-                      options={outletOptions}
-                      disabled={outletsLoading}
-                      size="small"
-                      slotProps={{
-                        input: {
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <StorefrontIcon fontSize="small" />
-                            </InputAdornment>
-                          ),
-                        },
-                      }}
-                    />
-
-                    <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-                      <FormCheckbox
-                        name="rememberMe"
-                        label={<Typography variant="body2">Remember me</Typography>}
-                      />
-                      <Link
-                        component="button"
-                        type="button"
-                        variant="body2"
-                        underline="hover"
-                        onClick={() => handleComingSoon('Forgot password')}
-                      >
-                        Forgot Password?
-                      </Link>
-                    </Stack>
-
-                    <Button type="submit" variant="contained" size="medium" disabled={isLoading || !allFieldsFilled} fullWidth>
-                      {isLoading ? 'Signing in…' : 'Login'}
-                    </Button>
-
-                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                      <HealthStatusTag status={healthStatus} services={healthServices} />
-                    </Box>
-
-                    <Divider>
-                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        OR
-                      </Typography>
-                    </Divider>
-
-                    <Button
-                      variant="outlined"
-                      size="medium"
-                      fullWidth
-                      startIcon={<PinIcon />}
-                      onClick={() => handleComingSoon('Login with PIN')}
-                    >
-                      Login with PIN
-                    </Button>
-                  </Stack>
-                </Box>
-              </FormProvider>
-
-              <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                Version {APP_VERSION}
-              </Typography>
+        <Paper
+          elevation={8}
+          sx={{
+            width: '100%',
+            maxWidth: 420,
+            px: { xs: 3, sm: 4, md: 5 },
+            py: { xs: 3, sm: 4, md: 4 },
+            borderRadius: 4,
+            // Glass card on desktop (blurred, semi-transparent so the photo
+            // shows through) — tinted to match whichever mode is active,
+            // so dark mode gets a dark-tinted glass card instead of a
+            // white one with unreadable light-on-light text, and light
+            // mode keeps the original near-white glass look.
+            bgcolor: {
+              xs: 'background.paper',
+              md: (t) => (t.palette.mode === 'dark' ? 'rgba(26, 31, 43, 0.85)' : 'rgba(255, 255, 255, 0.95)'),
+            },
+            backdropFilter: { md: 'blur(16px)' },
+            border: {
+              md: (t) => `1px solid ${t.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.6)'}`,
+            },
+          }}
+        >
+          <Stack spacing={1.75} sx={{ width: '100%' }}>
+            <Stack spacing={0.75} sx={{ alignItems: 'center' }}>
+              <AppLogo iconSize={32} titleFontSize="1.05rem" subtitleFontSize="0.56rem" />
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  Welcome to <Box component="span" sx={{ color: 'primary.main' }}>Nexora</Box> POS
+                </Typography>
+                <Box sx={{ width: 44, height: 3, bgcolor: 'primary.main', borderRadius: 1, mx: 'auto', mt: 0.5 }} />
+                <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 600, color: 'text.secondary' }}>
+                  {TENANT_NAME}
+                </Typography>
+              </Box>
             </Stack>
-          </Paper>
+
+            <FormProvider {...methods}>
+              <Box component="form" onSubmit={methods.handleSubmit(onSubmit)} noValidate>
+                <Stack spacing={1.25}>
+                  {serverError && (
+                    <Typography variant="body2" color="error" role="alert">
+                      {serverError}
+                    </Typography>
+                  )}
+
+                  <FormTextField
+                    name="username"
+                    label="Username"
+                    autoComplete="username"
+                    size="small"
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <PersonOutlineIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
+                  />
+
+                  <FormPasswordField
+                    name="password"
+                    label="Password"
+                    autoComplete="current-password"
+                    size="small"
+                  />
+
+                  <FormSelect
+                    name="outletId"
+                    label="Select Outlet"
+                    options={outletOptions}
+                    disabled={outletsLoading}
+                    size="small"
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <StorefrontIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
+                  />
+
+                  <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                    <FormCheckbox
+                      name="rememberMe"
+                      label={<Typography variant="body2">Remember me</Typography>}
+                    />
+                    <Link
+                      component="button"
+                      type="button"
+                      variant="body2"
+                      underline="hover"
+                      onClick={() => handleComingSoon('Forgot password')}
+                    >
+                      Forgot Password?
+                    </Link>
+                  </Stack>
+
+                  <Button type="submit" variant="contained" size="medium" disabled={isLoading || !allFieldsFilled} fullWidth>
+                    {isLoading ? 'Signing in…' : 'Login'}
+                  </Button>
+
+                  <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                    <HealthStatusTag status={healthStatus} services={healthServices} />
+                  </Box>
+
+                  <Divider>
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      OR
+                    </Typography>
+                  </Divider>
+
+                  <Button
+                    variant="outlined"
+                    size="medium"
+                    fullWidth
+                    startIcon={<PinIcon />}
+                    onClick={() => handleComingSoon('Login with PIN')}
+                  >
+                    Login with PIN
+                  </Button>
+                </Stack>
+              </Box>
+            </FormProvider>
+
+            <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.secondary' }}>
+              Version {APP_VERSION}
+            </Typography>
+          </Stack>
+        </Paper>
       </Box>
     </Box>
   );

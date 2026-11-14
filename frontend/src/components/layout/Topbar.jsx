@@ -1,26 +1,22 @@
 import { useState } from 'react';
 import {
-  AppBar, Toolbar, IconButton, Box, Badge, Tooltip, Menu, MenuItem, ListItemText,
+  AppBar, Toolbar, IconButton, Box, Tooltip, Menu, MenuItem, ListItemText,
 } from '@mui/material';
 import MenuOutlinedIcon from '@mui/icons-material/MenuOutlined';
-import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined';
 import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
 import PaletteOutlinedIcon from '@mui/icons-material/PaletteOutlined';
 import { useTranslation } from 'react-i18next';
 import { useAppDispatch, useAppSelector } from '../../app/hooks';
 import {
-  showToast, toggleThemeMode, selectThemeMode, setAccentTheme, selectAccentThemeKey,
+  toggleThemeMode, selectThemeMode, setAccentTheme, selectAccentThemeKey,
 } from '../../features/ui/uiSlice';
 import { ACCENT_THEMES, accentCssBackground } from '../../theme/accentThemes';
 import GlobalSearch from './GlobalSearch';
 import OutletSwitcher from './OutletSwitcher';
 import UserMenu from './UserMenu';
+import NotificationBell from './NotificationBell';
 import LanguageSwitcher from './LanguageSwitcher';
-
-// Mock counts until Notifications is a real module — flagged so it's easy to
-// find and wire up once that backend exists.
-const MOCK_NOTIFICATION_COUNT = 5;
 
 // Accent color picker, sitting right next to the light/dark toggle: six
 // flat colors + six two-color gradient combos (ACCENT_THEMES), each shown
@@ -100,13 +96,7 @@ export default function Topbar({ onMenuClick }) {
             search box. */}
         <Box sx={{ flex: 1 }} />
 
-        <Tooltip title={t('common.notifications')}>
-          <IconButton onClick={() => dispatch(showToast(t('common.notificationsComingSoon'), 'info'))}>
-            <Badge badgeContent={MOCK_NOTIFICATION_COUNT} color="error">
-              <NotificationsNoneOutlinedIcon />
-            </Badge>
-          </IconButton>
-        </Tooltip>
+        <NotificationBell />
 
         <Tooltip title={isDark ? t('common.switchToLightMode') : t('common.switchToDarkMode')}>
           <IconButton onClick={() => dispatch(toggleThemeMode())}>

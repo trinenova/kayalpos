@@ -1,5 +1,5 @@
 import { Paper, Box, Typography, Stack, Link as MuiLink } from '@mui/material';
-import { alpha } from '@mui/material/styles';
+import { alpha, lighten, darken } from '@mui/material/styles';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { Link as RouterLink } from 'react-router-dom';
@@ -22,7 +22,22 @@ import { Link as RouterLink } from 'react-router-dom';
  */
 export default function StatCard({
   icon: Icon, iconColor = 'primary', label, value, delta, caption, link, valueColor, iconShape = 'square',
+  variant = 'default',
 }) {
+  if (variant === 'gradient') {
+    return (
+      <GradientStatCard
+        icon={Icon}
+        iconColor={iconColor}
+        label={label}
+        value={value}
+        delta={delta}
+        caption={caption}
+        link={link}
+        valueColor={valueColor}
+      />
+    );
+  }
   const isHex = iconColor.startsWith('#');
   return (
     <Paper
@@ -170,6 +185,152 @@ export default function StatCard({
             </MuiLink>
           )}
         </Box>
+    </Paper>
+  );
+}
+
+/**
+ * `variant="gradient"` — the dashboards' soft, tinted KPI tile: a gradient wash
+ * of the tile's colour, a glossy round icon badge and a faint oversized icon
+ * watermark. Every colour is derived from the active MUI theme (palette key or
+ * the passed hex) with alpha/lighten/darken, so it follows the selected accent
+ * theme and light/dark mode instead of hard-coding any colours.
+ */
+function GradientStatCard({
+  icon: Icon, iconColor, label, value, delta, caption, link, valueColor,
+}) {
+  const isHex = iconColor.startsWith('#');
+  const resolve = (theme) => (isHex ? iconColor : theme.palette[iconColor].main);
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={(theme) => {
+        const c = resolve(theme);
+        const dark = theme.palette.mode === 'dark';
+        return {
+          position: 'relative',
+          overflow: 'hidden',
+          p: 2.25,
+          borderRadius: 4,
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.75,
+          containerType: 'inline-size',
+          borderColor: alpha(c, dark ? 0.4 : 0.28),
+          backgroundColor: theme.palette.background.paper,
+          backgroundImage: `linear-gradient(135deg, ${alpha(c, dark ? 0.24 : 0.17)} 0%, ${alpha(c, dark ? 0.08 : 0.04)} 100%)`,
+          boxShadow: `0 8px 22px ${alpha(c, dark ? 0.16 : 0.12)}`,
+          transition: 'transform 0.18s ease, box-shadow 0.18s ease',
+          '&:hover': { transform: 'translateY(-2px)', boxShadow: `0 12px 28px ${alpha(c, dark ? 0.24 : 0.2)}` },
+        };
+      }}
+    >
+      {Icon && (
+        <Icon
+          sx={(theme) => ({
+            position: 'absolute',
+            right: -6,
+            bottom: -10,
+            fontSize: 92,
+            color: alpha(resolve(theme), theme.palette.mode === 'dark' ? 0.16 : 0.13),
+            pointerEvents: 'none',
+          })}
+        />
+      )}
+
+      {Icon && (
+        <Box
+          sx={(theme) => {
+            const c = resolve(theme);
+            return {
+              position: 'relative',
+              width: 52,
+              height: 52,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              color: '#fff',
+              background: `linear-gradient(145deg, ${lighten(c, 0.3)} 0%, ${c} 55%, ${darken(c, 0.18)} 100%)`,
+              boxShadow: `0 8px 16px ${alpha(c, 0.4)}, inset 0 1px 1px rgba(255,255,255,0.45)`,
+            };
+          }}
+        >
+          <Icon />
+        </Box>
+      )}
+
+      <Box sx={{ position: 'relative', minWidth: 0, flex: 1 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.primary',
+            fontWeight: 600,
+            lineHeight: 1.25,
+            fontSize: 'clamp(0.72rem, 3.3cqw, 0.9rem)',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            wordBreak: 'break-word',
+          }}
+        >
+          {label}
+        </Typography>
+
+        <Typography
+          sx={{
+            fontWeight: 800,
+            color: valueColor || 'text.primary',
+            mt: 0.25,
+            fontSize: 'clamp(0.95rem, 9.5cqw, 1.7rem)',
+            lineHeight: 1.2,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+          }}
+        >
+          {value}
+        </Typography>
+
+        {delta && (
+          <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mt: 0.25, flexWrap: 'wrap' }}>
+            {delta.direction === 'up' ? (
+              <ArrowUpwardIcon sx={{ fontSize: 14, color: 'success.main', flexShrink: 0 }} />
+            ) : (
+              <ArrowDownwardIcon sx={{ fontSize: 14, color: 'error.main', flexShrink: 0 }} />
+            )}
+            <Typography variant="caption" sx={{ color: delta.direction === 'up' ? 'success.main' : 'error.main', fontWeight: 700 }}>
+              {delta.value}
+            </Typography>
+            {delta.label && (
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: 'clamp(0.6rem, 2.8cqw, 0.75rem)' }}>
+                {delta.label}
+              </Typography>
+            )}
+          </Stack>
+        )}
+
+        {caption && !delta && (
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.25, fontSize: 'clamp(0.6rem, 2.8cqw, 0.75rem)' }}>
+            {caption}
+          </Typography>
+        )}
+
+        {link && (
+          <MuiLink
+            component={RouterLink}
+            to={link.to}
+            variant="caption"
+            underline="hover"
+            sx={{ display: 'block', fontWeight: 700, mt: 0.25 }}
+          >
+            {link.label} →
+          </MuiLink>
+        )}
+      </Box>
     </Paper>
   );
 }

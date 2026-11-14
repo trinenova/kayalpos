@@ -1,6 +1,6 @@
 import { prisma } from '../../config/prisma.js';
 import { ApiError } from '../../middleware/errorHandler.js';
-import { TAX_RATE } from '../sale/saleConstants.js';
+import { loadTaxRateResolver } from '../sale/taxRates.js';
 
 // Held ("parked") bills — see HeldBill in schema.prisma for the lifecycle.
 // Nothing in this file ever creates a Sale, takes a payment, issues an
@@ -48,6 +48,7 @@ async function priceLines(tx, tenantId, lines, discountType, discountValue) {
 
   const products = await tx.product.findMany({ where: { id: { in: [...merged.keys()] }, tenantId } });
   const byId = new Map(products.map((p) => [p.id, p]));
+  const taxRateOf = await loadTaxRateResolver(tx, tenantId);
 
   let subTotal = 0;
   const lineData = [...merged.entries()].map(([productId, qty]) => {
@@ -58,7 +59,7 @@ async function priceLines(tx, tenantId, lines, discountType, discountValue) {
     const amount = price * qty;
     subTotal += amount;
     return {
-      productId, code: product.code, name: product.name, uom: product.uom, qty, price, taxRate: TAX_RATE, amount,
+      productId, code: product.code, name: product.name, uom: product.uom, qty, price, taxRate: taxRateOf(product), amount,
     };
   });
 

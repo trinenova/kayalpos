@@ -55,6 +55,7 @@ export const createStockReceiptSchema = z.object({
   vehicleNo: z.string().trim().optional().or(z.literal('')),
   transporter: z.string().trim().optional().or(z.literal('')),
   deliveryChallanNo: z.string().trim().optional().or(z.literal('')),
+  deliveryDate: z.coerce.date().optional().nullable(),
   otherRemarks: z.string().trim().optional().or(z.literal('')),
   notes: z.string().trim().optional().or(z.literal('')),
   status: z.enum(['draft', 'received']).default('draft'),

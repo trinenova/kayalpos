@@ -1,10 +1,14 @@
 import { app } from './app.js';
 import { env } from './config/env.js';
 import { prisma } from './config/prisma.js';
+import { attachNotificationHub } from './modules/notification/notification.hub.js';
 
 const server = app.listen(env.PORT, () => {
   console.log(`Nexora POS API listening on http://localhost:${env.PORT}`);
 });
+
+// Live notifications over WebSocket (/ws/notifications) share this HTTP server.
+attachNotificationHub(server);
 
 // Without this, every nodemon restart (or `rs`, or a crash) kills the
 // process while its PrismaClient pool still holds open connections to

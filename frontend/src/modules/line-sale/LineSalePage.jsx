@@ -55,11 +55,13 @@ import PaymentMethodsCard from "./components/PaymentMethodsCard";
 import PaymentActionsCard from "./components/PaymentActionsCard";
 import AmountPayableCard from "./components/AmountPayableCard";
 import HeldBillsDialog from "./components/HeldBillsDialog";
+import ItemChoiceDialog from "./components/ItemChoiceDialog";
 import { PAYMENT_METHODS, WALK_IN_CUSTOMER, TAX_RATE } from "./lineSaleMockData";
 import { printReceipt } from "./receiptPrint";
 import AppLogo from "../../components/common/AppLogo";
 import { useCompanyProfileQuery } from "../../api/companyApi";
 import { useGetProductLotsQuery } from "../../api/productLotApi";
+import { useGetTaxCodesQuery } from "../../api/taxCodeApi";
 import { fifoAveragePrice, groupLotsByProduct } from "./fifoPricing";
 
 // Quick-cash chips next to the "Exact" chip (which fills the bill total).
@@ -188,6 +190,25 @@ export default function LineSalePage() {
   // code -> live product, used to resolve price/stock/productId whenever an
   // item is added or its quantity changed, so the cart never drifts from
   // what the Product master actually has on hand.
+  // GST is per product: its Tax Code (Masters > Tax Code) rate, matched by
+  // name or code like the server does; no/unknown code falls back to the flat
+  // default. The server recomputes this at pay time — this keeps the screen
+  // in step with it.
+  const { data: taxCodes = [] } = useGetTaxCodesQuery({ status: "ACTIVE" });
+  const taxRateOf = useMemo(() => {
+    const byKey = new Map();
+    taxCodes.forEach((t) => {
+      const rate = Number(t.rate) / 100;
+      byKey.set(String(t.name).trim().toLowerCase(), rate);
+      const codeKey = String(t.code).trim().toLowerCase();
+      if (!byKey.has(codeKey)) byKey.set(codeKey, rate);
+    });
+    return (product) => {
+      const key = String(product?.taxCode || "").trim().toLowerCase();
+      return key && byKey.has(key) ? byKey.get(key) : TAX_RATE;
+    };
+  }, [taxCodes]);
+
   const productByCode = useMemo(
     () =>
       Object.fromEntries(
@@ -200,10 +221,11 @@ export default function LineSalePage() {
             uom: p.uom,
             price: Number(p.salePrice),
             stock: p.availableQty,
+            taxRate: taxRateOf(p),
           },
         ]),
       ),
-    [products],
+    [products, taxRateOf],
   );
 
   // FIFO: open purchase lots per product (oldest first). The cart the rest of
@@ -216,10 +238,13 @@ export default function LineSalePage() {
   const cart = useMemo(
     () =>
       rawCart.map((line) => {
+        const live = productByCode[line.code];
+        // Each line is taxed at its own product's current GST rate.
+        const taxed = live ? { ...line, taxRate: live.taxRate } : line;
         const lots = lotsByProduct.get(line.id);
-        if (!lots || lots.length === 0) return line;
-        const fallback = productByCode[line.code]?.price ?? line.price;
-        return { ...line, price: fifoAveragePrice(lots, line.qty, fallback) };
+        if (!lots || lots.length === 0) return taxed;
+        const fallback = live?.price ?? line.price;
+        return { ...taxed, price: fifoAveragePrice(lots, line.qty, fallback) };
       }),
     [rawCart, lotsByProduct, productByCode],
   );
@@ -243,6 +268,8 @@ export default function LineSalePage() {
   // A held bill the cashier tapped Resume on while another unsaved bill is
   // still on screen — drives the "hold or clear it first" prompt.
   const [pendingResume, setPendingResume] = useState(null);
+  // Item picker popup — see handleAddItem / ItemChoiceDialog.
+  const [itemChoice, setItemChoice] = useState(null);
   const [busyHeldId, setBusyHeldId] = useState(null);
   // Idempotency token for one "hold new bill" attempt: reused if the request
   // is retried after a network failure so the server can't create two bills.
@@ -370,14 +397,54 @@ export default function LineSalePage() {
       return sum + lineTaxable * line.taxRate;
     }, 0);
     const grandTotal = round2(taxable + tax);
-    return { subTotal: round2(subTotal), discountAmount: round2(discountAmount), taxable: round2(taxable), tax: round2(tax), grandTotal };
+    // GST broken out per rate (one row per distinct rate on the bill).
+    const byRate = new Map();
+    cart.forEach((line) => {
+      const lineTaxable = subTotal > 0 ? ((line.qty * line.price) / subTotal) * taxable : 0;
+      const g = byRate.get(line.taxRate) || { rate: line.taxRate, taxable: 0, tax: 0 };
+      g.taxable += lineTaxable;
+      g.tax += lineTaxable * line.taxRate;
+      byRate.set(line.taxRate, g);
+    });
+    const taxGroups = [...byRate.values()]
+      .sort((a, b) => a.rate - b.rate)
+      .map((g) => ({ rate: g.rate, taxable: round2(g.taxable), tax: round2(g.tax) }));
+    return { subTotal: round2(subTotal), discountAmount: round2(discountAmount), taxable: round2(taxable), tax: round2(tax), grandTotal, taxGroups };
   }, [cart, discount, discountType]);
 
   const totalQty = useMemo(() => cart.reduce((sum, line) => sum + line.qty, 0), [cart]);
 
   const changeAmount = round2(receivedAmount - totals.grandTotal);
 
+  // Entry point for every "add this item" (search, scan, Short ID). When the
+  // pick is ambiguous — other active products share its name, or it has 2+
+  // open stock lots — a popup lists the candidates (with stock and lots) so
+  // the cashier chooses; otherwise the item goes straight onto the bill.
   const handleAddItem = (code) => {
+    const item = productByCode[code];
+    if (!item) return;
+    const nameKey = String(item.name || "").trim().toLowerCase();
+    const siblings = products.filter(
+      (p) => String(p.name || "").trim().toLowerCase() === nameKey,
+    );
+    const lotsOf = (p) => lotsByProduct.get(p.id) || [];
+    const ambiguous = siblings.length >= 2 || lotsOf(item).length >= 2;
+    if (!ambiguous) {
+      addItemToCart(code);
+      return;
+    }
+    const ordered = [
+      ...siblings.filter((p) => p.code === code),
+      ...siblings.filter((p) => p.code !== code),
+    ];
+    setItemChoice({
+      name: item.name,
+      pickedCode: code,
+      candidates: ordered.map((p) => ({ product: p, lots: lotsOf(p) })),
+    });
+  };
+
+  const addItemToCart = (code) => {
     const item = productByCode[code];
     if (!item) return;
 
@@ -407,7 +474,7 @@ export default function LineSalePage() {
           name: item.name,
           uom: item.uom,
           price: item.price,
-          taxRate: TAX_RATE,
+          taxRate: item.taxRate,
         },
       ];
     });
@@ -443,7 +510,7 @@ export default function LineSalePage() {
               name: item.name,
               uom: item.uom,
               price: item.price,
-              taxRate: TAX_RATE,
+              taxRate: item.taxRate,
             }
           : line,
       );
@@ -1190,6 +1257,15 @@ export default function LineSalePage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ItemChoiceDialog
+        choice={itemChoice}
+        onClose={() => setItemChoice(null)}
+        onPick={(code) => {
+          setItemChoice(null);
+          addItemToCart(code);
+        }}
+      />
 
       <AddCustomerDialog
         open={addCustomerOpen}

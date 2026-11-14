@@ -5,6 +5,11 @@ import ShoppingCartOutlinedIcon from '@mui/icons-material/ShoppingCartOutlined';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
+import BoltOutlinedIcon from '@mui/icons-material/BoltOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
+import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
+import EmojiEventsOutlinedIcon from '@mui/icons-material/EmojiEventsOutlined';
+import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 
 import { useAppSelector } from '../../app/hooks';
 import { selectActiveOutletId } from '../../features/auth/authSlice';
@@ -71,6 +76,7 @@ export default function HomePage() {
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
           <StatCard
+            variant="gradient"
             icon={CurrencyRupeeOutlinedIcon}
             iconColor="primary"
             label="Total Sales (Today)"
@@ -80,6 +86,7 @@ export default function HomePage() {
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
           <StatCard
+            variant="gradient"
             icon={ShoppingCartOutlinedIcon}
             iconColor="success"
             label="Orders (Today)"
@@ -89,6 +96,7 @@ export default function HomePage() {
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
           <StatCard
+            variant="gradient"
             icon={Inventory2OutlinedIcon}
             iconColor="info"
             label="Total Items"
@@ -98,6 +106,7 @@ export default function HomePage() {
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
           <StatCard
+            variant="gradient"
             icon={WarningAmberOutlinedIcon}
             iconColor="error"
             label="Low Stock Items"
@@ -107,6 +116,7 @@ export default function HomePage() {
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
           <StatCard
+            variant="gradient"
             icon={PeopleAltOutlinedIcon}
             iconColor="secondary"
             label="Total Customers"
@@ -121,11 +131,11 @@ export default function HomePage() {
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, lg: 6 }}>
           <Stack spacing={2} sx={{ height: '100%' }}>
-            <InfoCard title="Quick Access" sx={{ height: 'auto', flex: '0 0 auto' }}>
+            <InfoCard variant="panel" icon={BoltOutlinedIcon} title="Quick Access" sx={{ height: 'auto', flex: '0 0 auto' }}>
               <QuickAccessGrid items={quickAccessItems} />
             </InfoCard>
 
-            <InfoCard title="Recent Transactions" sx={{ height: 'auto', flex: '1 1 auto' }}>
+            <InfoCard variant="panel" icon={ReceiptLongOutlinedIcon} tone="primary" title="Recent Transactions" sx={{ height: 'auto', flex: '1 1 auto' }}>
               <DataTable columns={transactionColumns} rows={recentTransactions} getRowKey={(r) => r.id} />
             </InfoCard>
           </Stack>
@@ -133,17 +143,17 @@ export default function HomePage() {
 
         <Grid size={{ xs: 12, lg: 6 }}>
           <Stack spacing={2} sx={{ height: '100%' }}>
-            <InfoCard
+            <InfoCard variant="panel" icon={ShowChartOutlinedIcon}
               title="Sales Overview"
               action={<PeriodSelect value={salesPeriod} onChange={setSalesPeriod} options={[{ value: 'month', label: 'This Month' }, { value: 'week', label: 'This Week' }]} />}
               sx={{ height: 'auto', flex: '1 1 auto' }}
             >
-              <TrendChart categories={salesOverview.categories} values={salesOverview.values} height={220} />
+              <TrendChart categories={salesOverview.categories} values={salesOverview.values} height={220} area />
             </InfoCard>
 
             <Grid container spacing={2} sx={{ flex: '1 1 auto' }}>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <InfoCard
+                <InfoCard variant="panel" icon={EmojiEventsOutlinedIcon} tone="primary"
                   title="Top Selling Items"
                   action={<PeriodSelect value={topSellingPeriod} onChange={setTopSellingPeriod} options={[{ value: 'month', label: 'This Month' }, { value: 'week', label: 'This Week' }]} />}
                   link={{ label: 'View All', to: '/reports' }}
@@ -152,7 +162,7 @@ export default function HomePage() {
                 </InfoCard>
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <InfoCard title="Payment Summary (Today)">
+                <InfoCard variant="panel" icon={PaymentsOutlinedIcon} title="Payment Summary (Today)">
                   <DonutChart
                     data={paymentSummary.breakdown.map((b) => ({ id: b.method, label: b.method, value: b.amount, color: PAYMENT_COLORS[b.method] }))}
                     centerValue={formatCurrency(paymentSummary.total)}
@@ -163,7 +173,7 @@ export default function HomePage() {
               </Grid>
             </Grid>
 
-            <InfoCard title="Low Stock Items" link={{ label: 'View All', to: '/stock-count' }} sx={{ height: 'auto', flex: '1 1 auto' }}>
+            <InfoCard variant="panel" icon={WarningAmberOutlinedIcon} title="Low Stock Items" link={{ label: 'View All', to: '/stock-count' }} sx={{ height: 'auto', flex: '1 1 auto' }}>
               <DataTable columns={lowStockColumns} rows={lowStockDetails} getRowKey={(r) => r.id} dense />
             </InfoCard>
           </Stack>

@@ -25,7 +25,6 @@ export default function ReceiptViewPage({ id: propId, onBack, onEdit }) {
   const receipt = row ? toReceiptDetails(row) : null;
 
   const handleBack = () => (onBack ? onBack() : navigate('/stock-receipt'));
-  const handleEdit = () => (onEdit ? onEdit() : navigate(`/stock-receipt/edit/${id}`));
 
   if (isLoading) {
     return (
@@ -61,15 +60,12 @@ export default function ReceiptViewPage({ id: propId, onBack, onEdit }) {
           <Button variant="outlined" color="inherit" startIcon={<ArrowBackOutlinedIcon fontSize="small" />} onClick={handleBack}>
             Back to Stock Receipt List
           </Button>
-          <Button variant="contained" onClick={handleEdit}>
-            Edit Receipt
-          </Button>
         </Stack>
       </Stack>
 
       <Grid container spacing={2} sx={{ alignItems: 'stretch' }}>
         <Grid size={12}>
-          <StockReceiptDetailsCard receipt={receipt} onEdit={handleEdit} />
+          <StockReceiptDetailsCard receipt={receipt} />
         </Grid>
       </Grid>
     </Stack>

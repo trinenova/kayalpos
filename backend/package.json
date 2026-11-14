@@ -10,6 +10,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "node prisma/seed.js",
+    "db:seed:popup": "node prisma/seed-item-popup-demo.js",
     "db:reset-connections": "node scripts/reset-db-connections.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:held-bills": "node test/heldBill.integration.mjs",
@@ -18,6 +19,7 @@
     "test:tcz-timezone": "node test/tczTimezone.integration.mjs",
     "test:shift-variance": "node test/shiftVariance.integration.mjs",
     "test:fifo-lots": "node test/fifoLots.unit.mjs",
+    "test:tax-rates": "node test/taxRates.unit.mjs",
     "test:fifo-lots-db": "node test/fifoLots.integration.mjs"
   },
   "keywords": [],
@@ -34,6 +36,7 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.13.1",
+    "ws": "^8.18.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -6,7 +6,6 @@ import PercentOutlinedIcon from '@mui/icons-material/PercentOutlined';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 
 import { formatCurrency } from '../../../utils/format';
-import { TAX_RATE } from '../lineSaleMockData';
 
 const money = (v) => formatCurrency(v, { decimals: true });
 
@@ -22,8 +21,9 @@ export default function BillSummaryPanel({
   discount, discountType, onDiscountChange, onDiscountTypeChange,
   totals, onProceed, disabled,
 }) {
-  const gstPercent = Number((TAX_RATE * 100).toFixed(2));
-  const halfTax = totals.tax / 2;
+  // One GST block per distinct rate on the bill (each product has its own).
+  const taxGroups = totals.taxGroups || [];
+  const pct = (rate) => Number((rate * 100).toFixed(2));
 
   return (
     <Paper variant="outlined" sx={{ borderRadius: 3, p: 2.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -93,18 +93,28 @@ export default function BillSummaryPanel({
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>Taxable value</Typography>
           <Typography variant="body2" sx={{ fontWeight: 700 }}>{money(totals.taxable)}</Typography>
         </Stack>
-        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>GST {gstPercent}%</Typography>
-          <Typography variant="body2" sx={{ fontWeight: 700 }}>{money(totals.tax)}</Typography>
-        </Stack>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', pl: 2 }}>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>CGST {gstPercent / 2}%</Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>{money(halfTax)}</Typography>
-        </Stack>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', pl: 2 }}>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>SGST {gstPercent / 2}%</Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>{money(halfTax)}</Typography>
-        </Stack>
+        {taxGroups.length === 0 && (
+          <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>GST</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>{money(0)}</Typography>
+          </Stack>
+        )}
+        {taxGroups.map((g) => (
+          <Stack key={g.rate} spacing={1}>
+            <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>GST {pct(g.rate)}%</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>{money(g.tax)}</Typography>
+            </Stack>
+            <Stack direction="row" sx={{ justifyContent: 'space-between', pl: 2 }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>CGST {pct(g.rate) / 2}%</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>{money(g.tax / 2)}</Typography>
+            </Stack>
+            <Stack direction="row" sx={{ justifyContent: 'space-between', pl: 2 }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>SGST {pct(g.rate) / 2}%</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>{money(g.tax / 2)}</Typography>
+            </Stack>
+          </Stack>
+        ))}
       </Stack>
 
       <Divider />

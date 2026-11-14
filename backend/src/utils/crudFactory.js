@@ -149,7 +149,7 @@ export function createCrudRouter({
       const data = { ...req.body, tenantId: req.user.tenantId };
 
       if (codePrefix && !data[codeField]) {
-        data[codeField] = await nextCode({ model, tenantId: req.user.tenantId, prefix: codePrefix, length: codeLength });
+        data[codeField] = await nextCode({ model, tenantId: req.user.tenantId, prefix: codePrefix, length: codeLength, field: codeField });
       }
 
       const row = await model.create({ data });
@@ -197,9 +197,16 @@ export function createCrudRouter({
  * table (already anticipated in the architecture proposal) guarded by a
  * transaction.
  */
-async function nextCode({ model, tenantId, prefix, length = 3 }) {
-  const count = await model.count({ where: { tenantId } });
-  return `${prefix}${String(count + 1).padStart(length, '0')}`;
+async function nextCode({ model, tenantId, prefix, length = 3, field = 'code' }) {
+  // Highest existing numeric suffix + 1 (not row count + 1): after any delete
+  // the count-based code collided with an existing one and Save failed with a
+  // 409 "already exists". Also copes with mixed PROD0001 / PROD-0001 codes.
+  const rows = await model.findMany({ where: { tenantId, [field]: { startsWith: prefix } }, select: { [field]: true } });
+  const max = rows.reduce((m, r) => {
+    const n = Number.parseInt(String(r[field]).match(/(\d+)$/)?.[1] ?? '0', 10);
+    return n > m ? n : m;
+  }, 0);
+  return `${prefix}${String(max + 1).padStart(length, '0')}`;
 }
 
 /**

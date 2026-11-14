@@ -93,7 +93,6 @@ export default function StockReceiptPage() {
   const handleImport = () => setImportOpen(true);
   const handleCreate = () => setTab('create');
   const handleFilters = () => dispatch(showToast('Filters are coming soon', 'info'));
-  const handleEdit = () => openEdit(effectiveSelectedId);
   const handleExport = () => {
     setMoreActionsAnchor(null);
     if (!receipts.length) {
@@ -166,7 +165,7 @@ export default function StockReceiptPage() {
             ) : isError ? (
               <Typography variant="body2" color="error" sx={{ p: 2 }}>Failed to load receipts.</Typography>
             ) : receiptDetails ? (
-              <StockReceiptDetailsCard receipt={receiptDetails} onEdit={handleEdit} />
+              <StockReceiptDetailsCard receipt={receiptDetails} />
             ) : (
               <Typography variant="body2" sx={{ color: 'text.secondary', p: 2 }}>
                 No receipts yet — create one to get started.

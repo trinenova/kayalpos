@@ -1,4 +1,5 @@
 import { Grid, Paper, Stack, Box, Typography, Link as MuiLink } from '@mui/material';
+import { alpha, lighten, darken } from '@mui/material/styles';
 import { Link as RouterLink } from 'react-router-dom';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import RemoveShoppingCartOutlinedIcon from '@mui/icons-material/RemoveShoppingCartOutlined';
@@ -8,20 +9,42 @@ import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined
 import HowToRegOutlinedIcon from '@mui/icons-material/HowToRegOutlined';
 import { formatNumber } from '../../../utils/format';
 
+// Soft tinted tile with a glossy round icon badge — every colour comes from the
+// active theme palette (error / warning / info), so it follows the accent theme
+// and light/dark mode.
 function AlertTile({ icon: Icon, iconColor, value, label, link, footnote }) {
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, height: '100%' }}>
+    <Paper
+      variant="outlined"
+      sx={(theme) => {
+        const c = theme.palette[iconColor].main;
+        const dark = theme.palette.mode === 'dark';
+        return {
+          p: 2,
+          borderRadius: 4,
+          height: '100%',
+          borderColor: alpha(c, dark ? 0.4 : 0.25),
+          backgroundColor: theme.palette.background.paper,
+          backgroundImage: `linear-gradient(160deg, ${alpha(c, dark ? 0.2 : 0.12)} 0%, ${alpha(c, dark ? 0.06 : 0.03)} 100%)`,
+          boxShadow: `0 6px 18px ${alpha(c, dark ? 0.14 : 0.1)}`,
+        };
+      }}
+    >
       <Stack spacing={1}>
         <Box
-          sx={{
-            width: 38,
-            height: 38,
-            borderRadius: 2,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: `${iconColor}.main`,
-            color: '#fff',
+          sx={(theme) => {
+            const c = theme.palette[iconColor].main;
+            return {
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              background: `linear-gradient(145deg, ${lighten(c, 0.3)} 0%, ${c} 55%, ${darken(c, 0.18)} 100%)`,
+              boxShadow: `0 6px 12px ${alpha(c, 0.38)}, inset 0 1px 1px rgba(255,255,255,0.45)`,
+            };
           }}
         >
           <Icon fontSize="small" />
@@ -34,7 +57,7 @@ function AlertTile({ icon: Icon, iconColor, value, label, link, footnote }) {
         </Typography>
         {link && (
           <MuiLink component={RouterLink} to={link.to} variant="caption" underline="hover" sx={{ fontWeight: 700 }}>
-            {link.label}
+            {link.label} →
           </MuiLink>
         )}
         {footnote && (
@@ -71,7 +94,7 @@ export default function AlertStatsRow({ alerts }) {
         </Grid>
       ))}
       <Grid size={{ xs: 6, sm: 4, md: 3, lg: 12 / 7 }}>
-        <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, height: '100%' }}>
+        <Paper variant="outlined" sx={{ p: 2, borderRadius: 4, height: '100%', boxShadow: (theme) => `0 6px 18px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.3 : 0.05)}` }}>
           <Stack spacing={1}>
             <Box
               sx={{

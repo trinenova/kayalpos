@@ -1,4 +1,5 @@
 import { Stack, Box, Typography } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import { formatNumber } from '../../../utils/format';
 
@@ -10,14 +11,17 @@ import { formatNumber } from '../../../utils/format';
 export default function TopSellingList({ items }) {
   return (
     <Stack spacing={1.75}>
-      {items.map((item) => (
+      {items.map((item, index) => (
         <Stack key={item.id} direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+          <Typography variant="caption" sx={{ width: 14, color: 'text.secondary', fontWeight: 700, textAlign: 'center', flexShrink: 0 }}>
+            {index + 1}
+          </Typography>
           <Box
             sx={{
               width: 34,
               height: 34,
-              borderRadius: 1.5,
-              bgcolor: 'action.hover',
+              borderRadius: '50%',
+              bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.12),
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

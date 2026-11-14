@@ -12,6 +12,7 @@ export default function AmountPayableCard({ billNo, lines, totals }) {
   const MAX_LINES = 3;
   const shown = lines.slice(0, MAX_LINES);
   const hidden = lines.length - shown.length;
+  const groups = totals.taxGroups || [];
   const rates = [...new Set(lines.map((l) => l.taxRate))];
   const gstLabel =
     rates.length === 1 ? `GST ${Number((rates[0] * 100).toFixed(2))}%` : "GST";
@@ -112,6 +113,34 @@ export default function AmountPayableCard({ billNo, lines, totals }) {
           {lines.length} item{lines.length === 1 ? "" : "s"}
         </Typography>
       </Stack>
+
+      {/* GST summary: one row per rate when the bill mixes products with
+          different GST rates (each product is taxed at its own rate). */}
+      {groups.length > 1 && (
+        <>
+          <Divider sx={{ borderColor: "rgba(255,255,255,0.14)", my: 1.5 }} />
+          <Stack spacing={0.25}>
+            {groups.map((g) => (
+              <Stack
+                key={g.rate}
+                direction="row"
+                sx={{ justifyContent: "space-between", gap: 2 }}
+              >
+                <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+                  GST {Number((g.rate * 100).toFixed(2))}% on {money(g.taxable)}
+                  {" "}
+                  <span style={{ opacity: 0.7 }}>
+                    (CGST {money(g.tax / 2)} + SGST {money(g.tax / 2)})
+                  </span>
+                </Typography>
+                <Typography sx={{ fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+                  {money(g.tax)}
+                </Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </>
+      )}
     </Box>
   );
 }

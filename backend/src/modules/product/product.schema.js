@@ -3,7 +3,7 @@ import { z } from 'zod';
 // `code` is intentionally NOT required — the CRUD factory auto-generates it
 // (PROD0001, PROD0002, ...) on create, matching the frontend's mock data
 // convention (4-digit sequence).
-export const createProductSchema = z.object({
+const productShape = (d) => ({
   code: z.string().trim().min(1).optional(),
   // Optional short alias; unique per tenant (DB constraint). A blank value is
   // stored as NULL — never '' — so blanks never collide with each other.
@@ -28,25 +28,33 @@ export const createProductSchema = z.object({
   preferredVendor: z.string().trim().optional().nullable(),
   purchasingUom: z.string().trim().optional().nullable(),
   salesUom: z.string().trim().optional().nullable(),
-  unitPrice: z.coerce.number().nonnegative('Unit price cannot be negative').default(0),
-  isSalesItem: z.coerce.boolean().default(true),
-  isPurchaseItem: z.coerce.boolean().default(true),
-  isInventoryItem: z.coerce.boolean().default(true),
+  unitPrice: d(z.coerce.number().nonnegative('Unit price cannot be negative'), 0),
+  isSalesItem: d(z.coerce.boolean(), true),
+  isPurchaseItem: d(z.coerce.boolean(), true),
+  isInventoryItem: d(z.coerce.boolean(), true),
   barcode: z.string().trim().optional().nullable(),
   additionalIdentifier: z.string().trim().optional().nullable(),
   shippingType: z.string().trim().optional().nullable(),
   remarks: z.string().trim().optional().nullable(),
   manageItemBy: z.string().trim().optional().nullable(),
   manageMethod: z.string().trim().optional().nullable(),
-  isExcisable: z.coerce.boolean().default(false),
-  isGst: z.coerce.boolean().default(false),
-  salePrice: z.coerce.number().nonnegative('Sale price cannot be negative').default(0),
-  mrp: z.coerce.number().nonnegative('MRP cannot be negative').default(0),
-  availableQty: z.coerce.number().int('Available qty must be a whole number').nonnegative('Available qty cannot be negative').default(0),
-  status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
+  isExcisable: d(z.coerce.boolean(), false),
+  isGst: d(z.coerce.boolean(), false),
+  salePrice: d(z.coerce.number().nonnegative('Sale price cannot be negative'), 0),
+  mrp: d(z.coerce.number().nonnegative('MRP cannot be negative'), 0),
+  availableQty: d(z.coerce.number().int('Available qty must be a whole number').nonnegative('Available qty cannot be negative'), 0),
+  status: d(z.enum(['ACTIVE', 'INACTIVE']), 'ACTIVE'),
 });
 
-export const updateProductSchema = createProductSchema.partial();
+// Create fills in defaults for anything omitted. Update must NOT: Zod 4 keeps
+// applying `.default()` through `.partial()`, so every PUT that omitted
+// salePrice/mrp (the Edit form never sends them) silently reset them to 0, and
+// re-applied the other defaults too. Update therefore uses default-less fields.
+const withDefault = (schema, value) => schema.default(value);
+const noDefault = (schema) => schema.optional();
+
+export const createProductSchema = z.object(productShape(withDefault));
+export const updateProductSchema = z.object(productShape((schema) => noDefault(schema))).partial();
 
 // One row of a bulk Excel/CSV import — same shape as create, but every
 // numeric field arrives as whatever Excel/SheetJS produced (string or

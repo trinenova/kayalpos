@@ -300,17 +300,21 @@ export function BarcodeCell({
   const highlightedRef = useRef(null);
   const shown = typing ?? (line ? (index.barcodeByCode[line.code] || '') : '');
 
-  // Suggestions list ONLY barcodes keyed in on Stock Receipts (matched by
-  // barcode, item code or item name) — the Item Name field still searches
-  // everything.
+  // Suggestions: barcodes keyed in on Stock Receipts (matched by barcode, item
+  // code or item name) PLUS products whose Short ID contains what is typed — so
+  // typing a Short ID here finds the product too. The Item Name field still
+  // searches everything.
   const options = useMemo(() => {
     const q = norm(typing);
     if (!q) return [];
-    return index.labelEntries
+    const fromReceipts = index.labelEntries
       .filter((e) => e.source === SOURCE_RECEIPT
-        && (norm(e.barcode).includes(q) || norm(e.code).includes(q) || norm(e.name).includes(q)))
-      .slice(0, MAX_OPTIONS);
-  }, [typing, index.labelEntries]);
+        && (norm(e.barcode).includes(q) || norm(e.code).includes(q) || norm(e.name).includes(q)));
+    const fromShortId = index.productEntries
+      .filter((e) => e.product.shortId && norm(e.product.shortId).includes(q))
+      .map((e) => ({ ...e, barcode: '', byShortId: true }));
+    return [...fromShortId, ...fromReceipts].slice(0, MAX_OPTIONS);
+  }, [typing, index.labelEntries, index.productEntries]);
 
   const commit = (entry) => {
     setTyping(null);
@@ -323,9 +327,10 @@ export function BarcodeCell({
     const q = norm(typing);
     setTyping(null);
     if (!q) return;
-    const hit = index.labelEntries.find((e) => norm(e.barcode) === q);
+    const hit = index.labelEntries.find((e) => norm(e.barcode) === q)
+      || index.productEntries.find((e) => e.product.shortId && norm(e.product.shortId) === q);
     if (!hit) {
-      onNotify(`No item found for barcode "${String(typing).trim()}"`, 'warning');
+      onNotify(`No item found for barcode / Short ID "${String(typing).trim()}"`, 'warning');
       return;
     }
     onSelect(hit.code);
@@ -359,7 +364,7 @@ export function BarcodeCell({
         value={null}
         inputValue={shown}
         filterOptions={(opts) => opts}
-        getOptionLabel={(option) => (typeof option === 'string' ? option : option.barcode)}
+        getOptionLabel={(option) => (typeof option === 'string' ? option : (option.barcode || option.product.shortId || option.code))}
         isOptionEqualToValue={(option, v) => option.code === v.code && option.barcode === v.barcode}
         onInputChange={(_e, v, reason) => {
           if (reason === 'input') {
@@ -370,18 +375,20 @@ export function BarcodeCell({
         onHighlightChange={(_e, option) => { highlightedRef.current = option; }}
         onBlur={() => setTyping(null)}
         onChange={(_e, v) => { if (v && typeof v !== 'string') commit(v); }}
-        noOptionsText="No matching receipt barcodes"
+        noOptionsText="No matching barcode / Short ID"
         slotProps={{ popper: { placement: 'bottom-start', sx: { width: 'fit-content !important', minWidth: 300, maxWidth: 480 } } }}
         renderOption={(props, option) => {
           const { key: _muiKey, ...optionProps } = props;
           return (
-            <li key={`${option.code}-${option.barcode}`} {...optionProps}>
+            <li key={`${option.byShortId ? 'sid' : 'rcpt'}-${option.code}-${option.barcode}`} {...optionProps}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', minWidth: 0 }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-                  <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{option.barcode}</Typography>
+                  <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+                    {option.byShortId ? `ID ${option.product.shortId}` : option.barcode}
+                  </Typography>
                   <Typography variant="caption" color="text.secondary" noWrap>{option.name} · {option.code}</Typography>
                 </Box>
-                <Chip size="small" variant="outlined" color="primary" label="Receipt" sx={{ flexShrink: 0 }} />
+                <Chip size="small" variant="outlined" color="primary" label={option.byShortId ? 'Short ID' : 'Receipt'} sx={{ flexShrink: 0 }} />
               </Box>
             </li>
           );

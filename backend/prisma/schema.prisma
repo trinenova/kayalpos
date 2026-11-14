@@ -1910,6 +1910,7 @@ model StockReceipt {
   vehicleNo           String?   @map("VehicleNo")
   transporter         String?   @map("Transporter")
   deliveryChallanNo   String?   @map("DeliveryChallanNo")
+  deliveryDate        DateTime? @map("DeliveryDate")
   otherRemarks        String?   @map("OtherRemarks")
   notes               String?   @map("Notes")
   totalItems          Int       @default(0) @map("TotalItems")
@@ -2955,4 +2956,40 @@ model StockSyncLine {
   syncDate     DateTime?  @map("SyncDate")
 
   @@id([docEntry, lineId])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications: one row per event, shared by every user of the tenant.
+// Read / dismissed state is per user (NotificationState). `dedupeKey` makes
+// recurring alerts (e.g. "Milk is low on stock") fire once until resolved.
+// ---------------------------------------------------------------------------
+model Notification {
+  id        String   @id @default(cuid()) @map("Id")
+  tenantId  String   @map("TenantId")
+  type      String   @map("Type")
+  category  String   @map("Category")
+  severity  String   @default("info") @map("Severity")
+  title     String   @map("Title")
+  message   String?  @map("Message")
+  link      String?  @map("Link")
+  dedupeKey String?  @map("DedupeKey")
+  createdBy String?  @map("CreatedBy")
+  createdAt DateTime @default(now()) @map("CreatedAt")
+
+  states NotificationState[]
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, createdAt])
+}
+
+model NotificationState {
+  id             String       @id @default(cuid()) @map("Id")
+  notificationId String       @map("NotificationId")
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String       @map("UserId")
+  readAt         DateTime?    @map("ReadAt")
+  dismissedAt    DateTime?    @map("DismissedAt")
+
+  @@unique([notificationId, userId])
+  @@index([userId])
 }

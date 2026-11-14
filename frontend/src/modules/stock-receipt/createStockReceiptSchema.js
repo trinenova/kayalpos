@@ -57,6 +57,7 @@ export function emptyItemRow({ orderedQty = '', receivedQty = '' } = {}) {
     uom: '',
     orderedQty,
     receivedQty,
+    mrp: '',
     unitCost: '0.00',
     discount: '0.00',
     tax: '0.00',
@@ -80,6 +81,7 @@ const itemRowSchema = z.object({
   uom: z.string().trim(),
   orderedQty: decimalString('Enter a valid ordered quantity'),
   receivedQty: decimalString('Enter a valid received quantity'),
+  mrp: decimalString('Enter a valid MRP'),
   unitCost: decimalString('Enter a valid unit cost'),
   discount: decimalString('Enter a valid discount'),
   tax: decimalString('Enter a valid tax'),
@@ -115,6 +117,7 @@ export const createStockReceiptSchema = z
     vehicleNo: z.string().trim().optional(),
     transporter: z.string().trim().optional(),
     deliveryChallanNo: z.string().trim().optional(),
+    deliveryDate: z.string().trim().optional(),
     otherRemarks: z.string().trim().optional(),
 
     notes: z.string().trim().optional(),
@@ -155,6 +158,7 @@ export const createStockReceiptDefaultValues = {
   vehicleNo: '',
   transporter: '',
   deliveryChallanNo: '',
+  deliveryDate: '',
   otherRemarks: '',
 
   notes: '',

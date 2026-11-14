@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box, Table, TableHead, TableBody, TableRow, TableCell, TextField, MenuItem,
-  IconButton, Stack, Button, Typography, Alert,
+  IconButton, Stack, Button, Typography, Alert, Autocomplete,
 } from '@mui/material';
 import { Controller, useFormContext, useFieldArray, useWatch, useFormState } from 'react-hook-form';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
@@ -36,6 +36,7 @@ const COLUMNS = [
   { key: 'uom', label: 'UoM', minWidth: 100 },
   { key: 'orderedQty', label: 'Ordered Qty', minWidth: 100 },
   { key: 'receivedQty', label: 'Received Qty *', minWidth: 110 },
+  { key: 'mrp', label: 'MRP (₹)', minWidth: 100 },
   { key: 'unitCost', label: 'Unit Cost (₹)', minWidth: 110 },
   { key: 'discount', label: 'Discount (%)', minWidth: 100 },
   { key: 'tax', label: 'Tax (%)', minWidth: 90 },
@@ -233,6 +234,7 @@ export default function ReceiptItemsTable({ onAddItem, products = [] }) {
         >
           Add Row
         </Button>
+        {/* "Add Item" button hidden for now (its picker is not built yet).
         <Button
           variant="outlined"
           color="warning"
@@ -241,7 +243,7 @@ export default function ReceiptItemsTable({ onAddItem, products = [] }) {
           onClick={onAddItem}
         >
           Add Item
-        </Button>
+        </Button> */}
       </Stack>
     </Stack>
   );
@@ -261,14 +263,40 @@ function ItemRow({
     setValue(`items.${index}.hsnCode`, product.hsnSac || '', { shouldDirty: true });
     setValue(`items.${index}.barcode`, barcode ?? (barcodeByCode[product.code] || ''), { shouldDirty: true });
     setValue(`items.${index}.uom`, matchUom(product.uom), { shouldDirty: true });
+    // Pre-fill the MRP from the product (still editable per receipt line).
+    const productMrp = Number(product.mrp);
+    setValue(`items.${index}.mrp`, productMrp > 0 ? productMrp.toFixed(2) : '', { shouldDirty: true });
   };
 
+  // Exact match on a barcode first, then on a product's Short ID / code — so
+  // typing a Short ID in the Barcode cell and pressing Enter / leaving the
+  // field fills the row, just like a barcode does.
   const lookupBarcode = (value) => {
     const q = String(value || '').trim().toLowerCase();
     if (!q || row?.itemCode) return;
     const hit = searchIndex.labelEntries.find((e) => String(e.barcode).trim().toLowerCase() === q);
-    if (hit) fillFromProduct(hit.product, { barcode: String(value).trim() });
+    if (hit) { fillFromProduct(hit.product, { barcode: String(value).trim() }); return; }
+    const byId = products.find((p) => p.shortId && String(p.shortId).trim().toLowerCase() === q)
+      || products.find((p) => String(p.code || '').trim().toLowerCase() === q);
+    if (byId) fillFromProduct(byId);
   };
+
+  // Suggestions shown while typing in the Barcode cell (only for a row that
+  // has no item yet): barcodes that contain the text, plus products whose
+  // Short ID / code contains it.
+  const barcodeText = String(row?.barcode || '');
+  const barcodeOptions = useMemo(() => {
+    const q = barcodeText.trim().toLowerCase();
+    if (!q || row?.itemCode) return [];
+    const byBarcode = searchIndex.labelEntries
+      .filter((e) => String(e.barcode).toLowerCase().includes(q))
+      .map((e) => ({ key: `b-${e.code}-${e.barcode}`, product: e.product, barcode: e.barcode, kind: 'Barcode' }));
+    const byShortId = products
+      .filter((p) => (p.shortId && String(p.shortId).toLowerCase().includes(q))
+        || String(p.code || '').toLowerCase().includes(q))
+      .map((p) => ({ key: `p-${p.code}`, product: p, barcode: '', kind: 'Short ID' }));
+    return [...byShortId, ...byBarcode].slice(0, 25);
+  }, [barcodeText, row?.itemCode, searchIndex, products]);
 
   return (
     <TableRow sx={{ '& td': { py: 0.75 } }}>
@@ -282,19 +310,48 @@ function ItemRow({
           name={`items.${index}.barcode`}
           control={control}
           render={({ field }) => (
-            <TextField
-              {...field}
+            <Autocomplete
+              freeSolo
               size="small"
               fullWidth
-              placeholder="Scan / Enter Barcode"
-              autoComplete="off"
-              onBlur={(e) => { field.onBlur(); lookupBarcode(e.target.value); }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  lookupBarcode(e.target.value);
-                }
+              disableClearable
+              autoHighlight={false}
+              options={barcodeOptions}
+              filterOptions={(opts) => opts}
+              groupBy={(o) => o.kind}
+              getOptionLabel={(o) => (typeof o === 'string' ? o : (o.barcode || o.product.shortId || o.product.code))}
+              inputValue={field.value || ''}
+              onInputChange={(_e, value, reason) => { if (reason === 'input') field.onChange(value); }}
+              onChange={(_e, value) => {
+                if (!value) return;
+                if (typeof value === 'string') { lookupBarcode(value); return; }
+                fillFromProduct(value.product, value.barcode ? { barcode: value.barcode } : {});
               }}
+              noOptionsText="No matching barcode / Short ID"
+              renderOption={(props, option) => {
+                const { key: _k, ...optionProps } = props;
+                return (
+                  <li key={option.key} {...optionProps}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                      <Typography variant="body2" noWrap>{option.product.name}</Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap>
+                        {option.product.code}
+                        {option.product.shortId ? ` · ID ${option.product.shortId}` : ''}
+                        {option.barcode ? ` · ${option.barcode}` : ''}
+                      </Typography>
+                    </Box>
+                  </li>
+                );
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  inputRef={field.ref}
+                  placeholder="Scan / Enter Barcode or Short ID"
+                  autoComplete="off"
+                  onBlur={(e) => { field.onBlur(); lookupBarcode(e.target.value); }}
+                />
+              )}
             />
           )}
         />
@@ -354,6 +411,13 @@ function ItemRow({
       <TableCell>
         <Controller
           name={`items.${index}.receivedQty`}
+          control={control}
+          render={({ field }) => <TextField {...field} size="small" fullWidth placeholder="0.00" inputMode="decimal" />}
+        />
+      </TableCell>
+      <TableCell>
+        <Controller
+          name={`items.${index}.mrp`}
           control={control}
           render={({ field }) => <TextField {...field} size="small" fullWidth placeholder="0.00" inputMode="decimal" />}
         />

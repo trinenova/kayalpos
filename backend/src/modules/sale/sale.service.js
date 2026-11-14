@@ -1,10 +1,10 @@
 import { prisma } from '../../config/prisma.js';
 import { ApiError } from '../../middleware/errorHandler.js';
 
-import { TAX_RATE } from './saleConstants.js';
 import { completeHeldBill } from '../held-bill/heldBill.service.js';
 import { writeTczBill, toSaleDto } from './tczBilling.service.js';
 import { getOrCreateWalkInCustomer } from '../customer/customer.service.js';
+import { loadTaxRateResolver } from './taxRates.js';
 import { allocateFifoForSale, syncProductToHeadLot } from '../product-lot/productLot.service.js';
 
 /**
@@ -99,6 +99,8 @@ export async function createSale({
     // resulting bill line carries its own lot's selling price and purchase cost
     // (e.g. 7 units with 5 left in lot B1 and the rest in B2 -> two bill lines).
     const allocations = await allocateFifoForSale(tx, tenantId, lines, productById);
+    // GST is per product (its Tax Code's rate), not one flat rate for the bill.
+    const taxRateOf = await loadTaxRateResolver(tx, tenantId);
 
     let subTotal = 0;
     const lineData = [];
@@ -114,7 +116,7 @@ export async function createSale({
           uom: product.uom,
           qty: part.qty,
           price: part.price,
-          taxRate: TAX_RATE,
+          taxRate: taxRateOf(product),
           amount,
           lotId: part.lot?.id || null,
           unitCost: part.cost,
