@@ -151,6 +151,10 @@ export function buildReceiptHtml({
   th, td { padding: 1px 2px; text-align: left; font-size: 11px; font-weight: 700; }
   td.num, th.num { text-align: right; }
   .row { display: flex; justify-content: space-between; }
+  /* centered block; label | colon | value cells so the colons form one straight column */
+  .kvbox { display: table; margin: 0 auto; }
+  .kv { display: table-row; }
+  .kv span { display: table-cell; padding: 0 3px; text-align: left; }
   .biz-name { font-size: 14px; }
   .footer { margin-top: 6px; }
 </style>
@@ -161,8 +165,7 @@ export function buildReceiptHtml({
 ${buildAddressHtml(company)}
   ${locationLine ? `<div class="center">${esc(locationLine)}</div>` : ''}
   ${phoneLine ? `<div class="center">Ph: ${esc(phoneLine)}</div>` : ''}
-  ${company?.gstin ? `<div class="row"><span>GSTIN:</span><span>${esc(company.gstin)}</span></div>` : ''}
-  ${company?.fssaiNo ? `<div class="row"><span>FSSAI No:</span><span>${esc(company.fssaiNo)}</span></div>` : ''}
+  <div class="kvbox">${company?.gstin ? `<div class="kv"><span>GSTIN</span><span>:</span><span>${esc(company.gstin)}</span></div>` : ''}${company?.fssaiNo ? `<div class="kv"><span>FSSAI No</span><span>:</span><span>${esc(company.fssaiNo)}</span></div>` : ''}</div>
 
   <div class="divider"></div>
   <div class="row"><span>Bill No: ${esc(billNo)}</span></div>
@@ -339,6 +342,10 @@ export function buildReturnReceiptHtml({
   th, td { padding: 1px 2px; text-align: left; font-size: 11px; font-weight: 700; }
   td.num, th.num { text-align: right; }
   .row { display: flex; justify-content: space-between; }
+  /* centered block; label | colon | value cells so the colons form one straight column */
+  .kvbox { display: table; margin: 0 auto; }
+  .kv { display: table-row; }
+  .kv span { display: table-cell; padding: 0 3px; text-align: left; }
   .biz-name { font-size: 14px; }
   .footer { margin-top: 6px; }
 </style>
@@ -349,7 +356,7 @@ export function buildReturnReceiptHtml({
 ${buildAddressHtml(company)}
   ${locationLine ? `<div class="center">${esc(locationLine)}</div>` : ''}
   ${phoneLine ? `<div class="center">Ph: ${esc(phoneLine)}</div>` : ''}
-  ${company?.gstin ? `<div class="row"><span>GSTIN:</span><span>${esc(company.gstin)}</span></div>` : ''}
+  <div class="kvbox">${company?.gstin ? `<div class="kv"><span>GSTIN</span><span>:</span><span>${esc(company.gstin)}</span></div>` : ''}</div>
 
   <div class="divider"></div>
   <div class="center bold">SALES RETURN${isPreview ? ' (PREVIEW)' : ''}</div>
