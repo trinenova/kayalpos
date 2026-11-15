@@ -554,7 +554,7 @@ model Product {
   isGst       Boolean @default(false) @map("IsGst")
   salePrice    Decimal      @default(0) @map("SalePrice") @db.Decimal(12, 2)
   mrp          Decimal      @default(0) @map("MRP") @db.Decimal(12, 2)
-  availableQty Int          @default(0) @map("AvailableQty")
+  availableQty Decimal      @default(0) @map("AvailableQty") @db.Decimal(14, 3)
   // Reorder threshold for the Home dashboard's "Low Stock Items" panel — a
   // product is low stock once availableQty <= reorderLevel. Defaults to 10
   // so every existing row gets a sane threshold without a data migration;
@@ -577,6 +577,7 @@ model Product {
   batchSerials  BatchSerial[]
   priceHistory  PriceHistory[]
   lots          ProductLot[]
+  barcodes      ProductBarcode[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, shortId])
@@ -1053,6 +1054,28 @@ model HeldBill {
   @@index([tenantId, userId, status])
 }
 
+// Extra barcodes of a product, each with its own Sales Price / MRP / UOM
+// (Masters > Product > Barcodes tab). On Line Sale, scanning one of these
+// bills the line at the barcode's price and UOM; an item picked by name / code
+// (or a barcode with no price) uses the product's Sales tab price instead.
+// `salePrice` / `mrp` / `uom` are optional: blank falls back to the product's
+// own value. A barcode is unique per tenant.
+model ProductBarcode {
+  id        String   @id @default(cuid()) @map("Id")
+  tenantId  String   @map("TenantId")
+  productId String   @map("ProductId")
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  barcode   String   @map("Barcode")
+  salePrice Decimal? @map("SalePrice") @db.Decimal(12, 2)
+  mrp       Decimal? @map("Mrp") @db.Decimal(12, 2)
+  uom       String?  @map("Uom")
+  createdAt DateTime @default(now()) @map("CreatedAt")
+  updatedAt DateTime @updatedAt @map("UpdatedAt")
+
+  @@unique([tenantId, barcode])
+  @@index([productId])
+}
+
 model HeldBillLine {
   id         String   @id @default(cuid()) @map("Id")
   heldBillId String   @map("HeldBillId")
@@ -1062,7 +1085,9 @@ model HeldBillLine {
   code       String   @map("Code")
   name       String   @map("Name")
   uom        String   @map("Uom")
-  qty        Int      @map("Qty")
+  // Scanned product barcode (one with its own price) this line was billed at.
+  barcode    String?  @map("Barcode")
+  qty        Decimal  @map("Qty") @db.Decimal(14, 3)
   price      Decimal  @map("Price") @db.Decimal(12, 2)
   taxRate    Decimal  @map("TaxRate") @db.Decimal(5, 4)
   amount     Decimal  @map("Amount") @db.Decimal(12, 2)

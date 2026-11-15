@@ -124,7 +124,7 @@ export async function receiveLot(tx, {
       expiryDate,
     },
   });
-  await tx.product.update({ where: { id: productId }, data: { availableQty: { increment: Math.round(qty) } } });
+  await tx.product.update({ where: { id: productId }, data: { availableQty: { increment: round3(qty) } } });
   await syncProductToHeadLot(tx, tenantId, productId);
   return lot;
 }

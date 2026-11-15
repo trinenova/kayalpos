@@ -1,5 +1,23 @@
 import { z } from 'zod';
 
+// Blank / null -> null (use the product's own value); otherwise a non-negative number.
+const optionalAmount = (label) => z.preprocess(
+  (v) => (v === '' || v === null || v === undefined ? null : v),
+  z.coerce.number().nonnegative(`${label} cannot be negative`).nullable(),
+);
+
+// One extra barcode of a product with its own Sales Price / MRP / UOM. Blank
+// price / MRP / UOM fall back to the product's Sales tab / master values.
+export const productBarcodeSchema = z.object({
+  barcode: z.string().trim().min(1, 'Barcode is required').max(100, 'Barcode can be at most 100 characters'),
+  salePrice: optionalAmount('Sales price').optional(),
+  mrp: optionalAmount('MRP').optional(),
+  uom: z.string().trim().optional().nullable().transform((v) => (v ? v : null)),
+});
+
+const barcodesSchema = z.array(productBarcodeSchema).max(50, 'At most 50 barcodes per product')
+  .refine((rows) => new Set(rows.map((r) => r.barcode.toLowerCase())).size === rows.length, 'The same barcode is listed twice');
+
 // `code` is intentionally NOT required — the CRUD factory auto-generates it
 // (PROD0001, PROD0002, ...) on create, matching the frontend's mock data
 // convention (4-digit sequence).
@@ -33,6 +51,8 @@ const productShape = (d) => ({
   isPurchaseItem: d(z.coerce.boolean(), true),
   isInventoryItem: d(z.coerce.boolean(), true),
   barcode: z.string().trim().optional().nullable(),
+  // Multiple barcodes (Barcodes tab). When sent it REPLACES the product's barcode list.
+  barcodes: barcodesSchema.optional(),
   additionalIdentifier: z.string().trim().optional().nullable(),
   shippingType: z.string().trim().optional().nullable(),
   remarks: z.string().trim().optional().nullable(),
@@ -42,7 +62,8 @@ const productShape = (d) => ({
   isGst: d(z.coerce.boolean(), false),
   salePrice: d(z.coerce.number().nonnegative('Sale price cannot be negative'), 0),
   mrp: d(z.coerce.number().nonnegative('MRP cannot be negative'), 0),
-  availableQty: d(z.coerce.number().int('Available qty must be a whole number').nonnegative('Available qty cannot be negative'), 0),
+  // No validation: decimal and negative stock are accepted (blank -> 0).
+  availableQty: d(z.coerce.number(), 0),
   status: d(z.enum(['ACTIVE', 'INACTIVE']), 'ACTIVE'),
 });
 
@@ -84,7 +105,7 @@ export function normalizeBulkProductRow(row, { isNew = true } = {}) {
   STRING_FIELDS.forEach((k) => { if (has(row, k)) data[k] = String(row[k]).trim(); });
   BOOL_FIELDS.forEach((k) => { if (has(row, k)) data[k] = toBool(row[k]); });
   ['unitPrice', 'salePrice', 'mrp'].forEach((k) => { if (has(row, k)) data[k] = toNum(row[k]); });
-  if (has(row, 'availableQty')) data.availableQty = Math.round(toNum(row.availableQty));
+  if (has(row, 'availableQty')) data.availableQty = Math.round(toNum(row.availableQty) * 1000) / 1000;
   if (has(row, 'status')) data.status = String(row.status).trim().toLowerCase() === 'inactive' ? 'INACTIVE' : 'ACTIVE';
   if (Object.keys(data).length === 0) return null;
   if (isNew) {

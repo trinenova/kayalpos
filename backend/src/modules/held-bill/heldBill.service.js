@@ -1,6 +1,7 @@
 import { prisma } from '../../config/prisma.js';
 import { ApiError } from '../../middleware/errorHandler.js';
 import { loadTaxRateResolver } from '../sale/taxRates.js';
+import { resolveLineQty } from '../sale/uomRules.js';
 
 // Held ("parked") bills — see HeldBill in schema.prisma for the lifecycle.
 // Nothing in this file ever creates a Sale, takes a payment, issues an
@@ -43,23 +44,48 @@ const CONFLICT_MESSAGE = 'This held bill is no longer available — it was alrea
  * is verified (and deducted) only when the sale is actually paid.
  */
 async function priceLines(tx, tenantId, lines, discountType, discountValue) {
-  const merged = new Map();
-  lines.forEach((l) => merged.set(l.productId, (merged.get(l.productId) || 0) + l.qty));
-
-  const products = await tx.product.findMany({ where: { id: { in: [...merged.keys()] }, tenantId } });
+  const products = await tx.product.findMany({ where: { id: { in: [...new Set(lines.map((l) => l.productId))] }, tenantId } });
   const byId = new Map(products.map((p) => [p.id, p]));
+
+  // A scanned barcode that is one of the product's own (Masters > Product >
+  // Barcodes) is billed at that barcode's price / UOM, same as createSale.
+  const scanned = [...new Set(lines.map((l) => l.barcode).filter(Boolean))];
+  const barcodeRows = scanned.length
+    ? await tx.productBarcode.findMany({ where: { tenantId, barcode: { in: scanned } } })
+    : [];
+  const barcodeByValue = new Map(barcodeRows.map((b) => [b.barcode, b]));
+
+  // Validate each line, then merge repeats of the same product + barcode (the
+  // same product scanned with a different barcode stays on its own line, since
+  // its price can differ).
+  const merged = new Map();
+  lines.forEach((l) => {
+    const product = byId.get(l.productId);
+    if (!product) throw new ApiError(400, 'One of the items in this bill no longer exists');
+    const found = l.barcode ? barcodeByValue.get(l.barcode) : null;
+    const barcodeRow = found && found.productId === product.id ? found : null;
+    const { qty, uom } = resolveLineQty(product, l.qty, l.uom, barcodeRow);
+    const key = `${l.productId}|${barcodeRow?.barcode || ''}`;
+    const prev = merged.get(key);
+    merged.set(key, {
+      productId: l.productId,
+      barcodeRow,
+      qty: Math.round(((prev?.qty || 0) + qty) * 1000) / 1000,
+      uom,
+    });
+  });
   const taxRateOf = await loadTaxRateResolver(tx, tenantId);
 
   let subTotal = 0;
-  const lineData = [...merged.entries()].map(([productId, qty]) => {
+  const lineData = [...merged.values()].map(({ productId, barcodeRow, qty, uom }) => {
     const product = byId.get(productId);
     if (!product) throw new ApiError(400, 'One of the items in this bill no longer exists');
     if (product.status !== 'ACTIVE') throw new ApiError(400, `${product.name} is inactive and cannot be held`);
-    const price = Number(product.salePrice);
+    const price = barcodeRow?.salePrice != null ? Number(barcodeRow.salePrice) : Number(product.salePrice);
     const amount = price * qty;
     subTotal += amount;
     return {
-      productId, code: product.code, name: product.name, uom: product.uom, qty, price, taxRate: taxRateOf(product), amount,
+      productId, code: product.code, name: product.name, uom, barcode: barcodeRow?.barcode || null, qty, price, taxRate: taxRateOf(product), amount,
     };
   });
 
@@ -103,13 +129,14 @@ function serializeLine(line, live) {
     code: line.code,
     name: line.name,
     uom: line.uom,
-    qty: line.qty,
+    barcode: line.barcode || null,
+    qty: num(line.qty),
     price: num(line.price),
     taxRate: num(line.taxRate),
     amount: num(line.amount),
     // Today's catalogue values, so the screen can flag a price/stock change
     // since the bill was parked. The sale is always re-priced on payment.
-    live: live ? { price: num(live.salePrice), availableQty: live.availableQty, active: live.status === 'ACTIVE' } : null,
+    live: live ? { price: num(live.salePrice), availableQty: num(live.availableQty), active: live.status === 'ACTIVE' } : null,
   };
 }
 

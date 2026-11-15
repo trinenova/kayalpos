@@ -133,7 +133,7 @@ export async function writeTczBill(tx, {
       object: OBJECT,
       itemCode: line.code,
       itemName: line.name,
-      barCode: line.code,
+      barCode: line.barcode || line.code,
       uom: line.uom,
       price: round2(line.price),
       quantity: line.qty,

@@ -60,6 +60,8 @@ function toViewRow(row) {
     isPurchaseItem: row.isPurchaseItem ?? true,
     isInventoryItem: row.isInventoryItem ?? true,
     barcode: row.barcode || '',
+    // Extra barcodes with their own price / MRP / UOM (Barcodes tab).
+    barcodes: Array.isArray(row.barcodes) ? row.barcodes : [],
     additionalIdentifier: row.additionalIdentifier || '',
     shippingType: row.shippingType || '',
     remarks: row.remarks || '',

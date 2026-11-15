@@ -7,6 +7,20 @@ import {
   createProductSchema, updateProductSchema, normalizeBulkProductRow, bulkProductImportSchema,
 } from './product.schema.js';
 
+// Barcodes (Barcodes tab): each product can carry several barcodes, each with
+// its own Sales Price / MRP / UOM. They are written as nested rows; on update
+// the list that is sent REPLACES the stored one (omit `barcodes` to leave it
+// untouched). Product.barcode keeps mirroring the first barcode so older
+// screens that still read the single column keep working.
+const BARCODE_INCLUDE = { barcodes: { orderBy: { createdAt: 'asc' } } };
+const barcodeRows = (barcodes, tenantId) => barcodes.map((b) => ({
+  tenantId,
+  barcode: b.barcode,
+  salePrice: b.salePrice ?? null,
+  mrp: b.mrp ?? null,
+  uom: b.uom || null,
+}));
+
 const router = createCrudRouter({
   model: prisma.product,
   createSchema: createProductSchema,
@@ -14,6 +28,25 @@ const router = createCrudRouter({
   searchFields: ['code', 'shortId', 'name'],
   codePrefix: 'PROD',
   codeLength: 4,
+  listInclude: BARCODE_INCLUDE,
+  detailInclude: BARCODE_INCLUDE,
+  writeInclude: BARCODE_INCLUDE,
+  beforeCreate: ({ barcodes, ...data }) => {
+    if (!barcodes) return data;
+    return {
+      ...data,
+      barcode: barcodes[0]?.barcode ?? data.barcode ?? null,
+      barcodes: { create: barcodeRows(barcodes, data.tenantId) },
+    };
+  },
+  beforeUpdate: ({ barcodes, ...data }, req) => {
+    if (!barcodes) return data;
+    return {
+      ...data,
+      barcode: barcodes[0]?.barcode ?? '',
+      barcodes: { deleteMany: {}, create: barcodeRows(barcodes, req.user.tenantId) },
+    };
+  },
 });
 
 /**
@@ -98,6 +131,9 @@ router.post('/bulk', requireAuth, validateRequest(bulkProductImportSchema), asyn
 // other error falls straight through to the app-level error handler.
 // eslint-disable-next-line no-unused-vars
 router.use((err, req, res, next) => {
+  if (err?.statusCode === 409 && /barcode/i.test(JSON.stringify(err.details ?? ''))) {
+    return next(new ApiError(409, 'One of these barcodes is already used by another product', err.details));
+  }
   if (err?.statusCode === 409 && /shortid/i.test(JSON.stringify(err.details ?? ''))) {
     return next(new ApiError(409, 'That Short ID is already used by another product', err.details));
   }
