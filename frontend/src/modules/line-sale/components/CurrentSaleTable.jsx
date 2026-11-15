@@ -177,30 +177,6 @@ export default function CurrentSaleTable({
       ),
     },
     {
-      key: 'uom',
-      label: 'UOM',
-      width: '11%',
-      render: (row) => {
-        if (row.blank) return null;
-        const options = row.uomOptions?.length ? row.uomOptions : [row.enteredUom];
-        if (options.length < 2 || !onUomChange) {
-          return <Typography variant="body2" sx={{ fontWeight: 600 }}>{row.enteredUom}</Typography>;
-        }
-        return (
-          <TextField
-            select
-            size="small"
-            value={row.enteredUom}
-            onChange={(e) => onUomChange(row.key, e.target.value)}
-            slotProps={{ htmlInput: { 'aria-label': `UOM for ${row.name || row.code}` } }}
-            sx={{ minWidth: 84, '& .MuiSelect-select': { py: '6px', fontSize: 14, fontWeight: 600 } }}
-          >
-            {options.map((u) => <MenuItem key={u} value={u}>{u}</MenuItem>)}
-          </TextField>
-        );
-      },
-    },
-    {
       key: 'price',
       label: 'Price',
       width: '14%',

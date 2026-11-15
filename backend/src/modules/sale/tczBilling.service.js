@@ -53,7 +53,7 @@ const TENDER_COLUMN = { cash: 'cash', card: 'card', upi: 'upi', wallet: 'wallet'
  * SalesType, Return, Free, Batch, ChangeLog, SlpCode1/2, SlpName1/2, line TaxCode.
  */
 export async function writeTczBill(tx, {
-  tenantId, outletId, billNo, cashierName, customer, customerId, customerName,
+  tenantId, outletId, billNo, cashierName, createdById, customer, customerId, customerName,
   productById, lineData, subTotal, discountAmount, taxable, taxAmount, grandTotal,
   discountType, discountValue, paymentMethod, receivedAmount, changeAmount,
   cardType, cardLast4, cardBank, upiApp, upiTxnId, paymentReference,
@@ -82,6 +82,7 @@ export async function writeTczBill(tx, {
       // IST (Asia/Kolkata) wall-clock time of the SAME instant as createDate.
       createTime: istTimeOfDay(now),
       createdBy: cashierName,
+      createdById: createdById || null,
       object: OBJECT,
       docStatus: 'COMPLETED',
       canceled: 'N',

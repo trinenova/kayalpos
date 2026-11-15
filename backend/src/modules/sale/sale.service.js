@@ -14,6 +14,16 @@ import { resolveLineQty } from './uomRules.js';
  * screen's Bill No. field before a sale is actually saved — same "preview,
  * not a reservation" caveat as useNextCodePreview on the frontend.
  */
+/**
+ * Who may see which bills. Admins (no `own`) see every bill of the outlet;
+ * any other user passes `own = { userId, name }` and only sees the bills they
+ * rang up. Bills saved before `createdById` existed are matched by cashier name.
+ */
+export function ownerFilter(own) {
+  if (!own) return {};
+  return { OR: [{ createdById: own.userId }, { createdById: null, createdBy: own.name }] };
+}
+
 export async function nextBillNo(tenantId) {
   const count = await prisma.tczOpos.count({ where: { tenantId } });
   return `LS-${String(count + 1).padStart(5, '0')}`;
@@ -168,7 +178,7 @@ export async function createSale({
     const stockBefore = new Map(products.map((p) => [p.id, p.availableQty]));
 
     const sale = await writeTczBill(tx, {
-      tenantId, outletId, billNo, cashierName, customer, customerId: customer.id,
+      tenantId, outletId, billNo, cashierName, createdById: actor?.id, customer, customerId: customer.id,
       customerName: customerId ? (customerName || customer.name) : customer.name,
       productById, lineData, subTotal, discountAmount, taxable, taxAmount, grandTotal,
       discountType, discountValue, paymentMethod, receivedAmount, changeAmount,
@@ -419,10 +429,12 @@ function formatDayLabel(date) {
  * bucket of tenders like "everything that isn't cash/card/upi". They
  * default to the same value so single-tender callers only pass one.
  */
-async function getTenderSalesReport(tenantId, outletId, { date, page, pageSize } = {}, {
+async function getTenderSalesReport(tenantId, outletId, params = {}, {
   paymentMethodWhere, refundToWhere = paymentMethodWhere, donutId, tenderLabel, mapExtraRowFields = () => ({}),
 }) {
-  const outletFilter = outletId ? { outletId } : {};
+  const { date, page, pageSize } = params;
+  const own = ownerFilter(params.own);
+  const outletFilter = { ...(outletId ? { outletId } : {}), ...own };
   const { start: dayStart, end: dayEnd } = dayBounds(date);
   const { start: todayStart, end: todayEnd } = dayBounds();
 
@@ -451,7 +463,7 @@ async function getTenderSalesReport(tenantId, outletId, { date, page, pageSize }
         refundMode: 'refund',
         refundTo: refundToWhere,
         createdAt: { gte: dayStart, lte: dayEnd },
-        ...(outletId ? { tczBill: { outletId } } : {}),
+        ...(outletId || params.own ? { tczBill: { ...(outletId ? { outletId } : {}), ...own } } : {}),
       },
       select: { grandTotal: true },
     }),
@@ -713,7 +725,7 @@ function labelForPaymentMethod(method) {
  *   net retained amount, same as every other tender report.
  */
 export async function getOtherPaymentsReport(tenantId, outletId, params = {}) {
-  const outletFilter = outletId ? { outletId } : {};
+  const outletFilter = { ...(outletId ? { outletId } : {}), ...ownerFilter(params.own) };
   const { start: dayStart, end: dayEnd } = dayBounds(params.date);
 
   // One groupBy instead of three separate aggregate() calls for the
@@ -782,9 +794,9 @@ export async function getOtherPaymentsReport(tenantId, outletId, params = {}) {
  * Line Sale "Recent Sales" popup: the outlet's most recent bills (newest
  * first), default 10.
  */
-export async function getRecentSales(tenantId, outletId, limit = 10) {
+export async function getRecentSales(tenantId, outletId, limit = 10, own = null) {
   const rows = await prisma.tczOpos.findMany({
-    where: { tenantId, ...(outletId ? { outletId } : {}) },
+    where: { tenantId, ...(outletId ? { outletId } : {}), ...ownerFilter(own) },
     orderBy: { createDate: 'desc' },
     take: Math.min(Math.max(Number(limit) || 10, 1), 50),
     select: {
@@ -804,9 +816,9 @@ export async function getRecentSales(tenantId, outletId, limit = 10) {
 }
 
 /** One bill (header + lines) by bill number — "Recent Sales" View / Print. */
-export async function getSaleByBillNo(tenantId, outletId, billNo) {
+export async function getSaleByBillNo(tenantId, outletId, billNo, own = null) {
   const sale = await prisma.tczOpos.findFirst({
-    where: { tenantId, docNum: billNo, ...(outletId ? { outletId } : {}) },
+    where: { tenantId, docNum: billNo, ...(outletId ? { outletId } : {}), ...ownerFilter(own) },
     include: { lines: { orderBy: { lineId: 'asc' } } },
   });
   if (!sale) throw new ApiError(404, 'Bill not found');

@@ -9,9 +9,18 @@ import {
   getSalesOverviewSummary, getCustomerPurchaseSummaries, getCustomerPurchaseSummary,
   getCashSalesReport, getCardSalesReport, getUpiSalesReport, getOtherPaymentsReport,
 } from './sale.service.js';
+import { getAccess } from '../permission/permission.service.js';
 
 const router = Router();
 router.use(requireAuth);
+
+// Admins (accounts with no restricted role) see every bill of the outlet;
+// every other user only sees the bills they rang up themselves. Returns null
+// for "no restriction", otherwise the { userId, name } the services filter by.
+async function ownScope(req) {
+  const access = req.access || await getAccess(req.user.id);
+  return access.isSuperAdmin ? null : { userId: req.user.id, name: req.user.name };
+}
 
 // Live "LS-00001"-style preview for the Line Sale screen's Bill No. field,
 // same idea as customer/product's next-code preview.
@@ -27,7 +36,7 @@ router.get('/next-bill-no', async (req, res, next) => {
 // Line Sale "Recent Sales" popup — the outlet's last 10 bills.
 router.get('/recent', async (req, res, next) => {
   try {
-    const data = await getRecentSales(req.user.tenantId, req.user.outletId, 10);
+    const data = await getRecentSales(req.user.tenantId, req.user.outletId, 10, await ownScope(req));
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -37,7 +46,7 @@ router.get('/recent', async (req, res, next) => {
 // Full bill for "Recent Sales" View / Print.
 router.get('/bill/:billNo', async (req, res, next) => {
   try {
-    const data = await getSaleByBillNo(req.user.tenantId, req.user.outletId, req.params.billNo);
+    const data = await getSaleByBillNo(req.user.tenantId, req.user.outletId, req.params.billNo, await ownScope(req));
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -98,7 +107,7 @@ router.get('/customer/:customerId', async (req, res, next) => {
 // which figures are all-time vs. scoped to the `date` query param.
 router.get('/cash-summary', validateRequest(cashSalesQuerySchema, 'query'), async (req, res, next) => {
   try {
-    const report = await getCashSalesReport(req.user.tenantId, req.user.outletId, req.query);
+    const report = await getCashSalesReport(req.user.tenantId, req.user.outletId, { ...req.query, own: await ownScope(req) });
     res.json({ success: true, data: report });
   } catch (err) {
     next(err);
@@ -112,7 +121,7 @@ router.get('/cash-summary', validateRequest(cashSalesQuerySchema, 'query'), asyn
 // card type/last-4/bank not being captured by checkout yet.
 router.get('/card-summary', validateRequest(cardSalesQuerySchema, 'query'), async (req, res, next) => {
   try {
-    const report = await getCardSalesReport(req.user.tenantId, req.user.outletId, req.query);
+    const report = await getCardSalesReport(req.user.tenantId, req.user.outletId, { ...req.query, own: await ownScope(req) });
     res.json({ success: true, data: report });
   } catch (err) {
     next(err);
@@ -126,7 +135,7 @@ router.get('/card-summary', validateRequest(cardSalesQuerySchema, 'query'), asyn
 // UPI app/transaction ID not being captured by checkout yet.
 router.get('/upi-summary', validateRequest(upiSalesQuerySchema, 'query'), async (req, res, next) => {
   try {
-    const report = await getUpiSalesReport(req.user.tenantId, req.user.outletId, req.query);
+    const report = await getUpiSalesReport(req.user.tenantId, req.user.outletId, { ...req.query, own: await ownScope(req) });
     res.json({ success: true, data: report });
   } catch (err) {
     next(err);
@@ -141,7 +150,7 @@ router.get('/upi-summary', validateRequest(upiSalesQuerySchema, 'query'), async 
 // paymentReference not being captured by checkout yet.
 router.get('/other-summary', validateRequest(otherPaymentsQuerySchema, 'query'), async (req, res, next) => {
   try {
-    const report = await getOtherPaymentsReport(req.user.tenantId, req.user.outletId, req.query);
+    const report = await getOtherPaymentsReport(req.user.tenantId, req.user.outletId, { ...req.query, own: await ownScope(req) });
     res.json({ success: true, data: report });
   } catch (err) {
     next(err);
