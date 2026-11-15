@@ -2692,6 +2692,8 @@ model TczOpos {
   updateDate           DateTime? @map("UpdateDate") @db.Timestamptz(6)
   updateTime           DateTime? @map("UpdateTime") @db.Time(6)
   createdBy            String?   @map("CreatedBy") @db.VarChar(500)
+  // Login account that rang up the bill — non-admin users only see their own bills.
+  createdById          String?   @map("CreatedById")
   updatedBy            String?   @map("UpdatedBy") @db.VarChar(500)
   changeLog            String?   @map("ChangeLog") @db.VarChar(50)
   canceled             String?   @map("Canceled") @db.VarChar(5)
@@ -2759,6 +2761,7 @@ model TczOpos {
   @@index([tenantId, customerId])
   @@index([tenantId, outletId, createDate])
   @@index([tenantId, payMode, createDate])
+  @@index([tenantId, createdById])
   @@map("Linesales")
 }
 
