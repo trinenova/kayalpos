@@ -66,15 +66,22 @@ import { useGetTaxCodesQuery } from "../../api/taxCodeApi";
 import { fifoAveragePrice, groupLotsByProduct } from "./fifoPricing";
 import { unitsForProduct, unitOf, stepFor, normalizeQty, round3 } from "./uomRules";
 
-// A cart line is keyed by product code, plus the barcode when it was scanned with
-// a barcode that has its own price — so the same product scanned with two
-// differently priced barcodes stays on two lines.
-const lineKeyOf = (code, barcode) => (barcode ? `${code}#${barcode}` : code);
 // The product's own barcode row for a scanned barcode string (null when the
-// barcode isn't one of the product's priced barcodes).
+// barcode isn't one of the product's barcodes).
 const pricedBarcode = (item, barcode) => (
   barcode ? item?.barcodes?.find((b) => b.barcode === barcode) || null : null
 );
+// A cart line is identified by product + the price and UOM it is billed at, so
+// scanning the same product with barcodes that have the SAME price adds to one
+// line (qty goes up), while barcodes with a DIFFERENT price (or UOM) get their
+// own line. Items with no barcode price are billed at the Sales tab price and
+// share the plain product line.
+const lineKeyFor = (item, barcode) => {
+  const b = pricedBarcode(item, barcode);
+  if (!b || (b.salePrice == null && !b.uom)) return item.code;
+  const price = b.salePrice == null ? "" : Number(b.salePrice);
+  return `${item.code}@${price}|${String(b.uom || item.uom || "").toLowerCase()}`;
+};
 
 // Quick-cash chips next to the "Exact" chip (which fills the bill total).
 const QUICK_AMOUNTS = [100, 500, 2000];
@@ -548,15 +555,16 @@ export default function LineSalePage() {
   };
 
   // Adds one of `code` to the bill. A scanned barcode that has its own price
-  // (Masters > Product > Barcodes) gets its own line, billed at that barcode's
-  // Sales Price and UOM; an item picked by name / code (or a barcode with no
+  // (Masters > Product > Barcodes) is billed at that barcode's Sales Price and
+  // UOM — on its own line only when that price/UOM differs from the lines
+  // already on the bill, otherwise it adds to the matching line; an item picked by name / code (or a barcode with no
   // price) is billed at the product's Sales tab price. Scanning the same
   // barcode again just adds to its line.
   const addItemToCart = (code, barcode = null) => {
     const item = productByCode[code];
     if (!item) return;
     const priced = pricedBarcode(item, barcode);
-    const key = lineKeyOf(code, priced?.barcode);
+    const key = lineKeyFor(item, barcode);
     const info = unitsForProduct({ uom: priced?.uom || item.uom });
 
     setCart((prev) => {
@@ -596,7 +604,7 @@ export default function LineSalePage() {
     const item = productByCode[newCode];
     if (!item) return;
     const priced = pricedBarcode(item, newBarcode);
-    const newKey = lineKeyOf(newCode, priced?.barcode);
+    const newKey = lineKeyFor(item, newBarcode);
     if (oldKey === newKey) return;
     const info = unitsForProduct({ uom: priced?.uom || item.uom });
     setCart((prev) => {
@@ -769,7 +777,7 @@ export default function LineSalePage() {
   const loadHeldBill = (bill) => {
     setCart(
       bill.lines.map((line) => ({
-        key: lineKeyOf(line.code, line.barcode),
+        key: lineKeyFor(productByCode[line.code] || { code: line.code }, line.barcode),
         id: line.productId,
         code: line.code,
         barcode: line.barcode || undefined,
