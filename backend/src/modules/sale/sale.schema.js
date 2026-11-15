@@ -1,13 +1,21 @@
 import { z } from 'zod';
 
 // One cart line as sent by the Line Sale screen. `productId` is what the
-// server actually trusts — code/name/uom/taxRate are echoed back only (price is honoured only when the cashier overrides it)
+// server actually trusts — code/name/uom/taxRate are echoed back only (price is honoured only when the cashier overrides it; uom is validated against the item group's allowed units)
 // so a mismatch (stale client cache) can be surfaced clearly, never trusted
 // for money math (see sale.service.js's createSale, which re-reads the
 // Product row fresh inside the transaction).
 export const saleLineSchema = z.object({
   productId: z.string().trim().min(1, 'Product is required'),
-  qty: z.coerce.number().int('Quantity must be a whole number').positive('Quantity must be at least 1'),
+  // Decimal quantities are allowed (e.g. 0.5 Kg); the unit's own rules (whole
+  // numbers only for Nos, ...) are enforced in uomRules.js's resolveLineQty.
+  qty: z.coerce.number().positive('Quantity must be greater than 0').max(999999, 'Quantity is too large')
+    .refine((n) => Math.abs(n * 1000 - Math.round(n * 1000)) < 1e-6, 'Quantity can have at most 3 decimal places'),
+  // Unit the qty was typed in (Kg, Gram, Nos...). Omitted = the product's own / group's default unit.
+  uom: z.string().trim().min(1).max(50).optional().nullable(),
+  // Product barcode the item was scanned with. When it is one of the product's
+  // own barcodes (Masters > Product > Barcodes) its Sales Price / UOM are used.
+  barcode: z.string().trim().min(1).max(100).optional().nullable(),
   // Optional cashier price override (per unit, before GST). When present it is
   // used instead of the stock-lot / product price for this line.
   price: z.coerce.number().nonnegative('Price cannot be negative').optional(),

@@ -64,6 +64,17 @@ import { useCompanyProfileQuery } from "../../api/companyApi";
 import { useGetProductLotsQuery } from "../../api/productLotApi";
 import { useGetTaxCodesQuery } from "../../api/taxCodeApi";
 import { fifoAveragePrice, groupLotsByProduct } from "./fifoPricing";
+import { unitsForProduct, unitOf, stepFor, normalizeQty, round3 } from "./uomRules";
+
+// A cart line is keyed by product code, plus the barcode when it was scanned with
+// a barcode that has its own price — so the same product scanned with two
+// differently priced barcodes stays on two lines.
+const lineKeyOf = (code, barcode) => (barcode ? `${code}#${barcode}` : code);
+// The product's own barcode row for a scanned barcode string (null when the
+// barcode isn't one of the product's priced barcodes).
+const pricedBarcode = (item, barcode) => (
+  barcode ? item?.barcodes?.find((b) => b.barcode === barcode) || null : null
+);
 
 // Quick-cash chips next to the "Exact" chip (which fills the bill total).
 const QUICK_AMOUNTS = [100, 500, 2000];
@@ -233,6 +244,14 @@ export default function LineSalePage() {
             price: Number(p.salePrice),
             stock: p.availableQty,
             taxRate: taxRateOf(p),
+            // The product's own barcodes (Masters > Product > Barcodes), each
+            // with its own Sales Price / MRP / UOM (null = use the product's).
+            barcodes: (p.barcodes || []).map((b) => ({
+              barcode: b.barcode,
+              salePrice: b.salePrice == null ? null : Number(b.salePrice),
+              mrp: b.mrp == null ? null : Number(b.mrp),
+              uom: b.uom || null,
+            })),
           },
         ]),
       ),
@@ -246,18 +265,41 @@ export default function LineSalePage() {
   const { data: lotRows = [] } = useGetProductLotsQuery();
   const lotsByProduct = useMemo(() => groupLotsByProduct(lotRows), [lotRows]);
   const [rawCart, setCart] = useState([]);
+  // `rawCart` holds each line as the cashier entered it (qty in the chosen UOM:
+  // 2 Kg, 6 Nos). `cart` is that re-expressed in the product's master
+  // UOM (0.5 Kg) because the price is per base unit — so qty x price, totals,
+  // the receipt and the payload all stay consistent. `enteredQty` / `enteredUom`
+  // keep what the cashier typed for the Current Sale grid and for the server,
+  // which repeats the same conversion on save.
   const cart = useMemo(
     () =>
       rawCart.map((line) => {
         const live = productByCode[line.code];
+        // The barcode this line was scanned with (if it has its own price / UOM).
+        const bc = live?.barcodes.find((b) => b.barcode === line.barcode);
+        const info = unitsForProduct({ uom: bc?.uom || live?.uom || line.uom });
+        const unit = unitOf(info, line.uom);
+        const baseQty = round3(line.qty * unit.factor);
         // Each line is taxed at its own product's current GST rate.
-        const taxed = live ? { ...line, taxRate: live.taxRate } : line;
+        const taxed = {
+          ...line,
+          uomOptions: info.units.map((u) => u.uom),
+          enteredQty: line.qty,
+          enteredUom: unit.uom,
+          uomFactor: unit.factor,
+          qty: baseQty,
+          uom: info.base,
+          ...(live ? { taxRate: live.taxRate } : {}),
+        };
         // A price typed in by the cashier wins over the stock-lot price.
         if (line.priceOverride != null) return { ...taxed, price: line.priceOverride };
+        // A scanned barcode with its own Sales Price is billed at that price;
+        // everything else uses the Sales tab price (FIFO lot price) below.
+        if (bc?.salePrice != null) return { ...taxed, price: bc.salePrice };
         const lots = lotsByProduct.get(line.id);
         if (!lots || lots.length === 0) return taxed;
         const fallback = live?.price ?? line.price;
-        return { ...taxed, price: fifoAveragePrice(lots, line.qty, fallback) };
+        return { ...taxed, price: fifoAveragePrice(lots, baseQty, fallback) };
       }),
     [rawCart, lotsByProduct, productByCode],
   );
@@ -301,18 +343,45 @@ export default function LineSalePage() {
   // itself; we only listen for the change to show the notification.
   const [isFullScreen, setIsFullScreen] = useState(false);
 
+  // Mirror of isFullScreen for the key handler (which must not re-subscribe
+  // on every change).
+  const isFullScreenRef = useRef(false);
+  useEffect(() => {
+    isFullScreenRef.current = isFullScreen;
+  }, [isFullScreen]);
+
   const enterFullScreen = useCallback(async () => {
     try {
       await document.documentElement.requestFullscreen();
     } catch {
+      // Browsers only allow the Fullscreen API from a click / key press they
+      // count as a "user activation" — a lone Ctrl or Shift tap often isn't
+      // one (Chrome ignores modifier keys). Fall back to the same full-window
+      // overlay without browser full screen so the shortcut always works.
+      setIsFullScreen(true);
       dispatch(
-        showToast("Full screen is not available in this browser", "warning"),
+        showToast("Full screen mode — press Ctrl or Esc to exit", "info", {
+          duration: 1800,
+          closable: false,
+        }),
       );
     }
   }, [dispatch]);
   const exitFullScreen = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    else setIsFullScreen(false);
   }, []);
+
+  // Esc exits the overlay-only mode (the browser handles Esc for real full screen).
+  useEffect(() => {
+    if (!isFullScreen) return undefined;
+    const onEsc = (e) => {
+      if (e.key === "Escape" && !document.fullscreenElement)
+        setIsFullScreen(false);
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [isFullScreen]);
 
   useEffect(() => {
     const onChange = () => {
@@ -322,7 +391,7 @@ export default function LineSalePage() {
       dispatch(
         showToast(
           active
-            ? "Full screen mode — press Esc to exit"
+            ? "Full screen mode — press Ctrl or Esc to exit"
             : "Exited full screen — back to normal view",
           "info",
           { duration: 1800, closable: false },
@@ -337,35 +406,44 @@ export default function LineSalePage() {
     };
   }, [dispatch]);
 
-  // Space enters full screen — but only when nothing is being typed into or
-  // focused (inputs, buttons, links, dialogs), otherwise it would swallow
-  // spaces in search/discount fields and double-fire buttons. Tab is left
-  // alone on purpose: it's keyboard focus navigation. The header button
-  // works in every situation.
+  // Tapping either Ctrl key enters full screen, and tapping it again exits.
+  // It only counts as a "tap" when Ctrl is pressed and released on its own:
+  // Ctrl+letter (copy/paste etc.), Ctrl+click, or Ctrl with Shift/Alt
+  // never toggle it. It works even while the cursor is in the barcode / search
+  // box (that box is focused almost all the time on this screen) but is
+  // ignored while a dialog is open. The browser only lets full screen start
+  // from a key press, which is why the key is armed on keydown and fired on
+  // keyup (the press's activation is still valid for a few seconds).
   useEffect(() => {
+    let ctrlArmed = false;
+    const isCtrl = (e) => e.code === "ControlLeft" || e.code === "ControlRight";
     const onKeyDown = (e) => {
-      if (
-        e.code !== "Space" ||
-        e.repeat ||
-        document.fullscreenElement ||
-        addCustomerOpen
-      )
+      if (isCtrl(e) && !e.repeat && !e.shiftKey && !e.altKey && !e.metaKey) {
+        ctrlArmed = true;
         return;
-      const el = e.target;
-      if (
-        el instanceof HTMLElement &&
-        (el.isContentEditable ||
-          el.closest(
-            'input, textarea, select, button, a, [role="button"], [role="menuitem"], [role="dialog"]',
-          ))
-      )
-        return;
-      e.preventDefault();
-      enterFullScreen();
+      }
+      ctrlArmed = false; // any other key means Ctrl was part of a combo
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [addCustomerOpen, enterFullScreen]);
+    const onMouseDown = () => {
+      ctrlArmed = false;
+    };
+    const onKeyUp = (e) => {
+      if (!isCtrl(e) || !ctrlArmed) return;
+      ctrlArmed = false;
+      if (addCustomerOpen || document.querySelector('[role="dialog"]')) return;
+      if (document.fullscreenElement || isFullScreenRef.current)
+        exitFullScreen();
+      else enterFullScreen();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("mousedown", onMouseDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("mousedown", onMouseDown, true);
+    };
+  }, [addCustomerOpen, enterFullScreen, exitFullScreen]);
 
   // Auto-generated by the backend (see api/saleApi's NextBillNo query and
   // backend/src/modules/sale's nextBillNo) — never typed or edited here.
@@ -433,25 +511,28 @@ export default function LineSalePage() {
     return { subTotal: round2(subTotal), discountAmount: round2(discountAmount), taxable: round2(taxable), tax: round2(tax), grandTotal, taxGroups };
   }, [cart, discount, discountType]);
 
-  const totalQty = useMemo(() => cart.reduce((sum, line) => sum + line.qty, 0), [cart]);
+  const totalQty = useMemo(() => round3(cart.reduce((sum, line) => sum + line.qty, 0)), [cart]);
 
   const changeAmount = round2(receivedAmount - totals.grandTotal);
 
-  // Entry point for every "add this item" (search, scan, Short ID). When the
-  // pick is ambiguous — other active products share its name, or it has 2+
-  // open stock lots — a popup lists the candidates (with stock and lots) so
-  // the cashier chooses; otherwise the item goes straight onto the bill.
-  const handleAddItem = (code) => {
+  // Entry point for every "add this item" (search, scan, Short ID). `barcode`
+  // is the barcode the item was scanned / picked with, if any. When the pick is
+  // ambiguous — other active products share its name, or it has 2+ open stock
+  // lots — a popup lists the candidates (with stock and lots) so the cashier
+  // chooses; otherwise the item goes straight onto the bill. A priced barcode
+  // is billed at that barcode's own price, so its stock lots don't matter.
+  const handleAddItem = (code, barcode = null) => {
     const item = productByCode[code];
     if (!item) return;
+    const priced = pricedBarcode(item, barcode);
     const nameKey = String(item.name || "").trim().toLowerCase();
     const siblings = products.filter(
       (p) => String(p.name || "").trim().toLowerCase() === nameKey,
     );
     const lotsOf = (p) => lotsByProduct.get(p.id) || [];
-    const ambiguous = siblings.length >= 2 || lotsOf(item).length >= 2;
+    const ambiguous = siblings.length >= 2 || (!priced && lotsOf(item).length >= 2);
     if (!ambiguous) {
-      addItemToCart(code);
+      addItemToCart(code, barcode);
       return;
     }
     const ordered = [
@@ -461,31 +542,45 @@ export default function LineSalePage() {
     setItemChoice({
       name: item.name,
       pickedCode: code,
+      pickedBarcode: barcode,
       candidates: ordered.map((p) => ({ product: p, lots: lotsOf(p) })),
     });
   };
 
-  const addItemToCart = (code) => {
+  // Adds one of `code` to the bill. A scanned barcode that has its own price
+  // (Masters > Product > Barcodes) gets its own line, billed at that barcode's
+  // Sales Price and UOM; an item picked by name / code (or a barcode with no
+  // price) is billed at the product's Sales tab price. Scanning the same
+  // barcode again just adds to its line.
+  const addItemToCart = (code, barcode = null) => {
     const item = productByCode[code];
     if (!item) return;
+    const priced = pricedBarcode(item, barcode);
+    const key = lineKeyOf(code, priced?.barcode);
+    const info = unitsForProduct({ uom: priced?.uom || item.uom });
 
     setCart((prev) => {
-      const existing = prev.find((line) => line.code === code);
-      const nextQty = (existing?.qty || 0) + 1;
+      const existing = prev.find((line) => line.key === key);
       // No stock validation — items can be sold even when stock is 0.
       if (existing) {
+        const unit = unitOf(info, existing.uom);
         return prev.map((line) =>
-          line.code === code ? { ...line, qty: nextQty } : line,
+          line.key === key
+            ? { ...line, qty: normalizeQty(unit, line.qty + stepFor(unit)) }
+            : line,
         );
       }
       return [
         ...prev,
         {
+          key,
           id: item.id,
           code,
+          barcode: priced?.barcode,
+          // New lines start at 1 of the barcode's UOM (or the product's UOM).
           qty: 1,
           name: item.name,
-          uom: item.uom,
+          uom: info.base,
           price: item.price,
           taxRate: item.taxRate,
         },
@@ -494,30 +589,37 @@ export default function LineSalePage() {
   };
 
   // Swap one cart line's item for another (the line's own search cell). The
-  // quantity carries over, capped at the new item's stock; if the new item is
-  // already on another line the two lines are merged.
-  const handleReplaceItem = (oldCode, newCode) => {
-    if (oldCode === newCode) return;
+  // quantity carries over when the new line is sold in the same UOM, otherwise
+  // it starts at 1; if the new item is already on another line the two lines
+  // are merged.
+  const handleReplaceItem = (oldKey, newCode, newBarcode = null) => {
     const item = productByCode[newCode];
     if (!item) return;
+    const priced = pricedBarcode(item, newBarcode);
+    const newKey = lineKeyOf(newCode, priced?.barcode);
+    if (oldKey === newKey) return;
+    const info = unitsForProduct({ uom: priced?.uom || item.uom });
     setCart((prev) => {
-      const old = prev.find((line) => line.code === oldCode);
+      const old = prev.find((line) => line.key === oldKey);
       if (!old) return prev;
-      const dup = prev.find((line) => line.code === newCode);
+      const sameUom = String(old.uom).toLowerCase() === String(info.base).toLowerCase();
+      const dup = prev.find((line) => line.key === newKey);
       if (dup) {
-        const merged = dup.qty + old.qty;
+        const merged = sameUom ? normalizeQty(unitOf(info, dup.uom), dup.qty + old.qty) : dup.qty;
         return prev
-          .filter((line) => line.code !== oldCode)
-          .map((line) => (line.code === newCode ? { ...line, qty: merged } : line));
+          .filter((line) => line.key !== oldKey)
+          .map((line) => (line.key === newKey ? { ...line, qty: merged } : line));
       }
       return prev.map((line) =>
-        line.code === oldCode
+        line.key === oldKey
           ? {
+              key: newKey,
               id: item.id,
               code: newCode,
-              qty: old.qty,
+              barcode: priced?.barcode,
+              qty: sameUom ? normalizeQty(unitOf(info, info.base), old.qty) : 1,
               name: item.name,
-              uom: item.uom,
+              uom: info.base,
               price: item.price,
               taxRate: item.taxRate,
             }
@@ -526,30 +628,35 @@ export default function LineSalePage() {
     });
   };
 
-  const handleQtyChange = (code, qty) => {
-    const item = productByCode[code];
-    // Stock is not enforced — only keep qty at 1 or more.
-    const clamped = Math.max(1, qty);
+  // `qty` is in the line's UOM; decimals are allowed (0.25 Kg).
+  const handleQtyChange = (key, qty) => {
     setCart((prev) =>
-      prev.map((line) =>
-        line.code === code ? { ...line, qty: clamped } : line,
-      ),
+      prev.map((line) => {
+        if (line.key !== key) return line;
+        const live = productByCode[line.code];
+        const bc = live?.barcodes.find((b) => b.barcode === line.barcode);
+        const unit = unitOf(unitsForProduct({ uom: bc?.uom || live?.uom || line.uom }), line.uom);
+        return { ...line, qty: normalizeQty(unit, qty) };
+      }),
     );
   };
 
+  // A line is sold in exactly one UOM, so there is nothing to switch to.
+  const handleUomChange = () => {};
+
   // Cashier edits the unit price (before GST) on a cart line.
-  const handlePriceChange = (code, price) => {
+  const handlePriceChange = (key, price) => {
     const value = Number(price);
     if (!Number.isFinite(value) || value < 0) return;
     setCart((prev) =>
       prev.map((line) =>
-        line.code === code ? { ...line, priceOverride: value } : line,
+        line.key === key ? { ...line, priceOverride: value } : line,
       ),
     );
   };
 
-  const handleRemove = (code) => {
-    setCart((prev) => prev.filter((line) => line.code !== code));
+  const handleRemove = (key) => {
+    setCart((prev) => prev.filter((line) => line.key !== key));
   };
 
   const resetBill = () => {
@@ -608,7 +715,12 @@ export default function LineSalePage() {
       customerName: customer.name,
       lines: cart.map((line) => ({
         productId: line.id,
-        qty: line.qty,
+        // Quantity as typed, in the chosen UOM — the server converts it to the
+        // product's master UOM (same rule as uomRules.js).
+        qty: line.enteredQty,
+        uom: line.enteredUom,
+        // Scanned barcode with its own price — the server bills it at that price / UOM.
+        ...(line.barcode ? { barcode: line.barcode } : {}),
         ...(line.priceOverride != null ? { price: line.priceOverride } : {}),
       })),
       discountType,
@@ -657,8 +769,10 @@ export default function LineSalePage() {
   const loadHeldBill = (bill) => {
     setCart(
       bill.lines.map((line) => ({
+        key: lineKeyOf(line.code, line.barcode),
         id: line.productId,
         code: line.code,
+        barcode: line.barcode || undefined,
         qty: line.qty,
         name: line.name,
         uom: line.uom,
@@ -682,6 +796,7 @@ export default function LineSalePage() {
     const changed = bill.lines.filter(
       (l) =>
         l.live &&
+        !l.barcode &&
         (!l.live.active ||
           l.live.price !== l.price),
     );
@@ -833,7 +948,12 @@ export default function LineSalePage() {
       cashierName,
       lines: cart.map((line) => ({
         productId: line.id,
-        qty: line.qty,
+        // Quantity as typed, in the chosen UOM — the server converts it to the
+        // product's master UOM (same rule as uomRules.js).
+        qty: line.enteredQty,
+        uom: line.enteredUom,
+        // Scanned barcode with its own price — the server bills it at that price / UOM.
+        ...(line.barcode ? { barcode: line.barcode } : {}),
         ...(line.priceOverride != null ? { price: line.priceOverride } : {}),
       })),
       discountType,
@@ -1086,7 +1206,7 @@ export default function LineSalePage() {
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
             <Tooltip
               title={
-                isFullScreen ? "Exit full screen (Esc)" : "Full screen (Space)"
+                isFullScreen ? "Exit full screen (Ctrl / Esc)" : "Full screen (Ctrl)"
               }
             >
               <IconButton
@@ -1162,6 +1282,7 @@ export default function LineSalePage() {
                 <CurrentSaleTable
                   lines={cart}
                   onQtyChange={handleQtyChange}
+                  onUomChange={handleUomChange}
                   onPriceChange={handlePriceChange}
                   onRemove={handleRemove}
                   products={counterProducts}
@@ -1309,8 +1430,9 @@ export default function LineSalePage() {
         choice={itemChoice}
         onClose={() => setItemChoice(null)}
         onPick={(code) => {
+          const barcode = itemChoice?.pickedCode === code ? itemChoice.pickedBarcode : null;
           setItemChoice(null);
-          addItemToCart(code);
+          addItemToCart(code, barcode);
         }}
       />
 

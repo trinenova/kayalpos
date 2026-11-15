@@ -43,6 +43,22 @@ export const STATUS_OPTIONS = [
   { value: 'Inactive', label: 'Inactive' },
 ];
 
+// One row of the Barcodes tab. Sales Price / MRP / UOM are optional: blank means
+// "use the product's own Sales tab price / MRP / UOM" for that barcode.
+const optionalAmountField = z.string().trim()
+  .refine((v) => v === '' || (!Number.isNaN(Number(v)) && Number(v) >= 0), 'Enter a valid non-negative amount');
+
+export const barcodeRowSchema = z.object({
+  barcode: z.string().trim().min(1, 'Barcode is required'),
+  salePrice: optionalAmountField,
+  mrp: optionalAmountField,
+  uom: z.string().trim().optional(),
+});
+
+export const emptyBarcodeRow = () => ({
+  barcode: '', salePrice: '', mrp: '', uom: '',
+});
+
 // Client-side validation mirrors the server's createProductSchema
 // (backend/src/modules/product/product.schema.js) — required fields can't
 // be blank and the numeric fields are range-checked before the request ever
@@ -77,7 +93,16 @@ export const createProductSchema = z.object({
   isSalesItem: z.boolean().optional(),
   isPurchaseItem: z.boolean().optional(),
   isInventoryItem: z.boolean().optional(),
-  barcode: z.string().trim().optional(),
+  // Multiple barcodes, each with its own Sales Price / MRP / UOM (Barcodes tab).
+  barcodes: z.array(barcodeRowSchema).superRefine((rows, ctx) => {
+    const seen = new Set();
+    rows.forEach((row, i) => {
+      const key = row.barcode.trim().toLowerCase();
+      if (!key) return;
+      if (seen.has(key)) ctx.addIssue({ code: 'custom', path: [i, 'barcode'], message: 'This barcode is already listed' });
+      seen.add(key);
+    });
+  }),
   additionalIdentifier: z.string().trim().optional(),
   shippingType: z.string().trim().optional(),
   remarks: z.string().trim().optional(),
@@ -90,10 +115,9 @@ export const createProductSchema = z.object({
     .refine((v) => !Number.isNaN(Number(v)) && Number(v) >= 0, 'Enter a valid non-negative amount'),
   mrp: z.string().trim().min(1, 'MRP is required')
     .refine((v) => !Number.isNaN(Number(v)) && Number(v) >= 0, 'Enter a valid non-negative amount'),
-  // Blank is allowed (saved as 0). It lives on the Inventory tab, so a
-  // "required" error here used to block Save/Update with nothing visible.
-  availableQty: z.string().trim()
-    .refine((v) => v === '' || /^\d+$/.test(v), 'Enter a whole, non-negative number'),
+  // No validation: blank, negative (oversold stock) and decimal (0.5 Kg)
+  // values are all accepted. Blank is saved as 0.
+  availableQty: z.string().trim(),
   status: z.string().trim().min(1, 'Select a status'),
 });
 
@@ -119,7 +143,7 @@ export const createProductDefaultValues = {
   isSalesItem: true,
   isPurchaseItem: true,
   isInventoryItem: true,
-  barcode: '',
+  barcodes: [],
   additionalIdentifier: '',
   shippingType: '',
   remarks: '',
@@ -132,6 +156,29 @@ export const createProductDefaultValues = {
   availableQty: '',
   status: 'Active',
 };
+
+// Barcode rows for the form. A product saved before the Barcodes tab existed only
+// has the single legacy `barcode` column: it is shown as one row (pre-filled with
+// the product's own price / MRP / UOM) so saving converts it to a real barcode row.
+function barcodesToFormValues(product) {
+  const rows = Array.isArray(product.barcodes) ? product.barcodes : [];
+  if (rows.length > 0) {
+    return rows.map((b) => ({
+      barcode: b.barcode || '',
+      salePrice: b.salePrice != null ? String(b.salePrice) : '',
+      mrp: b.mrp != null ? String(b.mrp) : '',
+      uom: b.uom || '',
+    }));
+  }
+  const legacy = String(product.barcode || '').trim();
+  if (!legacy) return [];
+  return [{
+    barcode: legacy,
+    salePrice: product.salePrice != null ? String(product.salePrice) : '',
+    mrp: product.mrp != null ? String(product.mrp) : '',
+    uom: product.uom || '',
+  }];
+}
 
 // Maps a Product row to react-hook-form values. Accepts either shape ProductFormDialog
 // can be opened with: the raw API row (GET /masters/product/:id — status:
@@ -164,7 +211,7 @@ export function productToFormValues(product) {
     isSalesItem: product.isSalesItem ?? true,
     isPurchaseItem: product.isPurchaseItem ?? true,
     isInventoryItem: product.isInventoryItem ?? true,
-    barcode: product.barcode || '',
+    barcodes: barcodesToFormValues(product),
     additionalIdentifier: product.additionalIdentifier || '',
     shippingType: product.shippingType || '',
     remarks: product.remarks || '',
@@ -205,8 +252,15 @@ export function productFormValuesToPayload(values) {
     isSalesItem: Boolean(values.isSalesItem),
     isPurchaseItem: Boolean(values.isPurchaseItem),
     isInventoryItem: Boolean(values.isInventoryItem),
-    // '' (not undefined) so clearing the field on edit really clears it.
-    barcode: values.barcode?.trim() || '',
+    // Always sent (even empty) so removing every barcode really removes them;
+    // the API replaces the stored list with this one. Blank price / MRP / UOM
+    // are sent as null = use the product's own value.
+    barcodes: (values.barcodes || []).map((b) => ({
+      barcode: b.barcode.trim(),
+      salePrice: b.salePrice?.trim() ? Number(b.salePrice) : null,
+      mrp: b.mrp?.trim() ? Number(b.mrp) : null,
+      uom: b.uom?.trim() || null,
+    })),
     additionalIdentifier: values.additionalIdentifier?.trim() || undefined,
     shippingType: values.shippingType || undefined,
     remarks: values.remarks?.trim() || undefined,
@@ -216,7 +270,7 @@ export function productFormValuesToPayload(values) {
     isGst: Boolean(values.isGst),
     salePrice: Number(values.salePrice),
     mrp: Number(values.mrp),
-    availableQty: Number(values.availableQty || 0),
+    availableQty: Number(values.availableQty) || 0,
     status: values.status === 'Inactive' ? 'INACTIVE' : 'ACTIVE',
   };
 }

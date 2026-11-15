@@ -6,6 +6,7 @@ import { writeTczBill, toSaleDto } from './tczBilling.service.js';
 import { getOrCreateWalkInCustomer } from '../customer/customer.service.js';
 import { loadTaxRateResolver } from './taxRates.js';
 import { allocateFifoForSale, syncProductToHeadLot } from '../product-lot/productLot.service.js';
+import { resolveLineQty } from './uomRules.js';
 
 /**
  * Preview of the bill number the NEXT sale will get (e.g. "LS-00001"),
@@ -38,7 +39,7 @@ export async function nextBillNo(tenantId) {
  *    never take a product below zero.
  */
 export async function createSale({
-  tenantId, outletId, cashierName, customerId, customerName, lines,
+  tenantId, outletId, cashierName, customerId, customerName, lines: rawLines,
   discountType, discountValue, paymentMethod, receivedAmount,
   cardType, cardLast4, cardBank, upiApp, upiTxnId, paymentReference,
   // Set when the cart being paid was resumed from a held bill: `actor` is the
@@ -77,9 +78,28 @@ export async function createSale({
       customer = await getOrCreateWalkInCustomer(tx, tenantId);
     }
 
-    const productIds = [...new Set(lines.map((line) => line.productId))];
+    const productIds = [...new Set(rawLines.map((line) => line.productId))];
     const products = await tx.product.findMany({ where: { id: { in: productIds }, tenantId } });
     const productById = new Map(products.map((p) => [p.id, p]));
+
+    // A scanned barcode that is one of the product's own barcodes (Masters >
+    // Product > Barcodes) bills the line at that barcode's Sales Price and UOM;
+    // an item added by name / code, or a barcode without a price, uses the
+    // product's Sales tab price (the FIFO lot price) as before.
+    const scanned = [...new Set(rawLines.map((l) => l.barcode).filter(Boolean))];
+    const barcodeRows = scanned.length
+      ? await tx.productBarcode.findMany({ where: { tenantId, barcode: { in: scanned } } })
+      : [];
+    const barcodeByValue = new Map(barcodeRows.map((b) => [b.barcode, b]));
+
+    const lines = rawLines.map((line) => {
+      const product = productById.get(line.productId);
+      if (!product) throw new ApiError(400, 'One of the items in this sale no longer exists');
+      const found = line.barcode ? barcodeByValue.get(line.barcode) : null;
+      const barcodeRow = found && found.productId === product.id ? found : null;
+      const { qty, uom } = resolveLineQty(product, line.qty, line.uom, barcodeRow);
+      return { ...line, qty, uom, barcodeRow };
+    });
 
     // Total quantity wanted per product across ALL cart lines — the same
     // product can legitimately appear on more than one line.
@@ -107,14 +127,16 @@ export async function createSale({
       allocations[index].forEach((part) => {
         // Cashier-edited price (Line Sale) replaces the lot/product price; the
         // lot (and its purchase cost) is still consumed as usual.
-        const unitPrice = line.price != null ? Number(line.price) : part.price;
+        const barcodePrice = line.barcodeRow?.salePrice != null ? Number(line.barcodeRow.salePrice) : null;
+        const unitPrice = line.price != null ? Number(line.price) : (barcodePrice ?? part.price);
         const amount = unitPrice * part.qty;
         subTotal += amount;
         lineData.push({
           productId: product.id,
           code: product.code,
           name: product.name,
-          uom: product.uom,
+          uom: line.uom,
+          barcode: line.barcodeRow?.barcode || null,
           qty: part.qty,
           price: unitPrice,
           taxRate: taxRateOf(product),

@@ -86,7 +86,7 @@ export function buildReceiptHtml({
   company, billNo, cashierName, dateTime, cart, totals, paymentMethod, receivedAmount, changeAmount,
 }) {
   const paymentLabel = PAYMENT_METHODS.find((m) => m.key === paymentMethod)?.label || paymentMethod;
-  const totalQty = cart.reduce((sum, line) => sum + line.qty, 0);
+  const totalQty = Math.round(cart.reduce((sum, line) => sum + line.qty, 0) * 1000) / 1000;
   const roundedTotal = Math.round(totals.grandTotal);
   const roundOff = round2(roundedTotal - totals.grandTotal);
 
@@ -293,7 +293,7 @@ export function buildReturnReceiptHtml({
   company, returnNo, originalInvoiceNo, invoiceDate, dateTime, cashierName, customerName,
   reasonLabel, lines, totals, refundMode, refundToLabel, isPreview,
 }) {
-  const totalQty = lines.reduce((sum, line) => sum + line.qty, 0);
+  const totalQty = Math.round(lines.reduce((sum, line) => sum + line.qty, 0) * 1000) / 1000;
   const roundedTotal = Math.round(totals.grandTotal);
   const roundOff = round2(roundedTotal - totals.grandTotal);
 

@@ -5,7 +5,12 @@ import { z } from 'zod';
 // the server, never taken from the client.
 const heldBillLineSchema = z.object({
   productId: z.string().trim().min(1, 'Product is required'),
-  qty: z.coerce.number().int('Quantity must be a whole number').positive('Quantity must be at least 1'),
+  qty: z.coerce.number().positive('Quantity must be greater than 0').max(999999, 'Quantity is too large')
+    .refine((n) => Math.abs(n * 1000 - Math.round(n * 1000)) < 1e-6, 'Quantity can have at most 3 decimal places'),
+  // Unit the qty was typed in; converted to the item group's base unit on save.
+  uom: z.string().trim().min(1).max(50).optional().nullable(),
+  // Product barcode the item was scanned with (its own price / UOM apply).
+  barcode: z.string().trim().min(1).max(100).optional().nullable(),
 });
 
 export const holdBillSchema = z.object({

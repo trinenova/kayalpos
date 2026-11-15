@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Stack, Typography, Button, Grid, TextField, CircularProgress,
-  Tabs, Tab, Checkbox, FormControlLabel, Divider,
+  Tabs, Tab, Checkbox, FormControlLabel, Divider, IconButton, Tooltip,
 } from '@mui/material';
-import { FormProvider, useForm, Controller } from 'react-hook-form';
+import { FormProvider, useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import CloseIcon from '@mui/icons-material/Close';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
 
 import { useAppDispatch } from '../../../../app/hooks';
 import { showToast } from '../../../../features/ui/uiSlice';
@@ -22,7 +24,7 @@ import { useGetHsnSacCodesQuery } from '../../../../api/hsnSacApi';
 import { useGetSuppliersQuery } from '../../../../api/supplierApi';
 import { useCreateProductMutation, useUpdateProductMutation, useNextProductCode } from '../../../../api/productApi';
 import {
-  createProductSchema, createProductDefaultValues, productToFormValues, productFormValuesToPayload,
+  createProductSchema, createProductDefaultValues, productToFormValues, productFormValuesToPayload, emptyBarcodeRow,
   MANAGE_ITEM_BY_SELECT_OPTIONS, TAX_GROUP_SELECT_OPTIONS,
   BRAND_PLACEHOLDER_OPTION, TAX_CODE_PLACEHOLDER_OPTION, HSN_PLACEHOLDER_OPTION,
   SUPPLIER_PLACEHOLDER_OPTION, PURCHASING_UOM_PLACEHOLDER_OPTION, SALES_UOM_PLACEHOLDER_OPTION,
@@ -34,12 +36,12 @@ import {
  * Product mockup: header fields (Item No/Description/Item Group/Unit
  * Price + "Item Listed In") above a General/Purchase/Sales/Inventory tab
  * strip. Foreign Name/UoM Group/Price List and the Sales/Purchase Item
- * checkboxes, plus Barcode/Product Sub-Group/Product Type/Shipping Type/
+ * checkboxes, plus Product Sub-Group/Product Type/Shipping Type/
  * Manage Method on the General tab, stay in the schema (productToFormValues/
  * productFormValuesToPayload) so existing rows keep round-tripping, but have
  * no field on this screen per the latest mockup.
  */
-const TABS = ['General', 'Purchase', 'Sales', 'Inventory'];
+const TABS = ['General', 'Purchase', 'Sales', 'Inventory', 'Barcodes'];
 const formatAmount = (v) => (v == null || v === '' ? '' : Number(v).toFixed(2));
 
 export default function ProductFormDialog({ open, mode = 'add', initialValues, onClose }) {
@@ -138,6 +140,23 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
   });
   const { handleSubmit, reset, control, formState: { isSubmitting } } = methods;
 
+  // Barcodes tab: any number of barcodes, each with its own Sales Price / MRP /
+  // UOM. Blank price / MRP / UOM on a row fall back to the product's own values
+  // (shown as the placeholder), and Line Sale only uses a barcode's price when
+  // that barcode is the one scanned.
+  const { fields: barcodeFields, append: appendBarcode, remove: removeBarcode } = useFieldArray({ control, name: 'barcodes' });
+  const watchedBarcodes = useWatch({ control, name: 'barcodes' }) || [];
+  const productSalePrice = useWatch({ control, name: 'salePrice' });
+  const productMrp = useWatch({ control, name: 'mrp' });
+  const productUom = useWatch({ control, name: 'uom' });
+  const barcodeUomOptions = useMemo(() => {
+    const options = [{ value: '', label: 'Same as product UOM' }, ...uoms.map((u) => ({ value: u.code, label: u.name }))];
+    watchedBarcodes.forEach((b) => {
+      if (b?.uom && !options.some((o) => o.value === b.uom)) options.push({ value: b.uom, label: b.uom });
+    });
+    return options;
+  }, [uoms, watchedBarcodes]);
+
   useEffect(() => {
     if (open) {
       reset(isEdit && initialValues ? productToFormValues(initialValues) : createProductDefaultValues);
@@ -166,17 +185,25 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
   }, (errors) => {
     // Validation failed: previously nothing happened when the bad field sat on
     // another tab. Jump to that tab and say what's wrong.
-    const generalFields = ['uom', 'brand', 'barcode', 'additionalIdentifier', 'packSize', 'manageItemBy', 'hsnSac', 'taxCode', 'taxGroup', 'remarks', 'isGst', 'isExcisable'];
+    const generalFields = ['uom', 'brand', 'additionalIdentifier', 'packSize', 'manageItemBy', 'hsnSac', 'taxCode', 'taxGroup', 'remarks', 'isGst', 'isExcisable'];
     const tabOf = (name) => {
       if (['preferredVendor', 'purchasingUom'].includes(name)) return 'Purchase';
       if (['salesUom', 'salePrice', 'mrp'].includes(name)) return 'Sales';
       if (name === 'availableQty') return 'Inventory';
+      if (name === 'barcodes') return 'Barcodes';
       return generalFields.includes(name) ? 'General' : null;
     };
     const [firstName, firstErr] = Object.entries(errors)[0] || [];
     const tab = tabOf(firstName);
     if (tab) setActiveTab(tab);
-    dispatch(showToast(firstErr?.message ? `Please fix: ${firstErr.message}` : 'Please fix the highlighted fields', 'warning'));
+    // Array fields (barcodes) nest their messages one level down.
+    const firstMsg = (e) => {
+      if (!e || typeof e !== 'object') return undefined;
+      if (e.message) return e.message;
+      return Object.values(e).map(firstMsg).find(Boolean);
+    };
+    const msg = firstMsg(firstErr);
+    dispatch(showToast(msg ? `Please fix: ${msg}` : 'Please fix the highlighted fields', 'warning'));
   });
 
   return (
@@ -236,19 +263,18 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
               onChange={(e, v) => setActiveTab(v)}
               sx={{ mt: 2, mb: 2, minHeight: 36, borderBottom: 1, borderColor: 'divider' }}
             >
-              {TABS.map((t) => <Tab key={t} value={t} label={t} sx={{ minHeight: 36, textTransform: 'none' }} />)}
+              {TABS.map((t) => (
+                <Tab
+                  key={t}
+                  value={t}
+                  label={t === 'Barcodes' && barcodeFields.length > 0 ? `Barcodes (${barcodeFields.length})` : t}
+                  sx={{ minHeight: 36, textTransform: 'none' }}
+                />
+              ))}
             </Tabs>
 
             {activeTab === 'General' && (
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12 }}>
-                  <FormTextField
-                    name="barcode"
-                    label="Barcode"
-                    placeholder="Scan or type the product barcode"
-                    helperText="Once saved, scanning this barcode on Line Sale adds the product automatically."
-                  />
-                </Grid>
                 <Grid size={{ xs: 12, sm: 6 }}>
                   <FormSelect name="uom" label="UOM *" options={baseUomOptions} />
                 </Grid>
@@ -320,10 +346,70 @@ export default function ProductFormDialog({ open, mode = 'add', initialValues, o
               </Grid>
             )}
 
+            {activeTab === 'Barcodes' && (
+              <Stack spacing={1.5}>
+                <Typography variant="body2" color="text.secondary">
+                  Add a row for every barcode of this product. On Line Sale, scanning a barcode bills the item at that
+                  barcode&apos;s Sales Price and UOM. Leave a field blank to use the Sales tab price / product UOM. Items
+                  added by name or code always use the Sales tab price.
+                </Typography>
+                {barcodeFields.length === 0 && (
+                  <Typography variant="body2" sx={{ py: 1, fontStyle: 'italic' }} color="text.secondary">
+                    No barcodes yet — click &quot;Add Barcode&quot; to add one.
+                  </Typography>
+                )}
+                {barcodeFields.map((field, i) => (
+                  <Grid container spacing={1.5} key={field.id} sx={{ alignItems: 'flex-start' }}>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <FormTextField name={`barcodes.${i}.barcode`} label="Barcode *" placeholder="Scan or type the barcode" />
+                    </Grid>
+                    <Grid size={{ xs: 6, md: 2 }}>
+                      <FormTextField
+                        name={`barcodes.${i}.salePrice`}
+                        label="Sales Price (₹)"
+                        placeholder={productSalePrice ? `Sales tab: ${productSalePrice}` : '0'}
+                        slotProps={{ htmlInput: { inputMode: 'decimal' } }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 6, md: 2 }}>
+                      <FormTextField
+                        name={`barcodes.${i}.mrp`}
+                        label="MRP (₹)"
+                        placeholder={productMrp ? `Sales tab: ${productMrp}` : '0'}
+                        slotProps={{ htmlInput: { inputMode: 'decimal' } }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 10, md: 3 }}>
+                      <FormSelect
+                        name={`barcodes.${i}.uom`}
+                        label={productUom ? `UOM (default ${productUom})` : 'UOM'}
+                        options={barcodeUomOptions}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 2, md: 1 }} sx={{ display: 'flex', justifyContent: 'center', pt: 0.75 }}>
+                      <Tooltip title="Remove barcode">
+                        <IconButton color="error" onClick={() => removeBarcode(i)} aria-label={`Remove barcode ${i + 1}`}>
+                          <DeleteOutlineOutlinedIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </Grid>
+                  </Grid>
+                ))}
+                <Button
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={() => appendBarcode(emptyBarcodeRow())}
+                  sx={{ alignSelf: 'flex-start' }}
+                >
+                  Add Barcode
+                </Button>
+              </Stack>
+            )}
+
             {activeTab === 'Inventory' && (
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 6 }}>
-                  <FormTextField name="availableQty" label="Available Qty *" placeholder="0" numeric />
+                  <FormTextField name="availableQty" label="Available Qty" placeholder="0" type="number" slotProps={{ htmlInput: { step: 'any' } }} />
                 </Grid>
               </Grid>
             )}

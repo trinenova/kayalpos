@@ -49,6 +49,24 @@ export function useItemSearchIndex(products) {
 
     const seen = new Set();
     const labelEntries = [];
+
+    // Barcodes keyed in on the product itself (Masters > Product > Barcodes),
+    // each with its own Sales Price / MRP / UOM. Added FIRST so that when the
+    // same barcode also appears on a label or receipt, this entry — the one
+    // that carries the barcode's own price — is the one that is kept.
+    products.forEach((p) => {
+      (p.barcodes || []).forEach((b) => {
+        const barcode = String(b.barcode || '').trim();
+        if (!barcode) return;
+        const key = `${p.code}|${barcode}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        labelEntries.push({
+          source: SOURCE_BARCODE, code: p.code, name: p.name, barcode, product: p, productBarcode: b,
+        });
+      });
+    });
+
     batches.forEach((batch) => {
       (batch.items || []).forEach((item) => {
         const product = productByCode[item.itemCode];
@@ -62,7 +80,7 @@ export function useItemSearchIndex(products) {
       });
     });
 
-    // Barcode typed on the Product master itself.
+    // Legacy single Barcode column on the Product master (no price of its own).
     products.forEach((p) => {
       const barcode = String(p.barcode || '').trim();
       if (!barcode) return;
@@ -139,7 +157,9 @@ export default function ItemSearchCell({
   const commit = (entry) => {
     setTyping(null);
     highlightedRef.current = null;
-    onSelect(entry.code);
+    // Second argument = the barcode this entry was found by (empty for a plain
+    // product-code / name pick), so its own price / UOM can apply.
+    onSelect(entry.code, entry.barcode || null);
     // A blank row keeps its place at the bottom after a pick, so hand the
     // cursor straight back to the FIRST field of that row (the Barcode cell)
     // for the next scan.
@@ -245,7 +265,7 @@ export default function ItemSearchCell({
                     {option.code}
                     {option.product.shortId ? ` · ID ${option.product.shortId}` : ''}
                     {option.barcode ? ` · ${option.barcode}` : ''}
-                    {` · ${formatCurrency(Number(option.product.salePrice))} · ${option.product.availableQty} ${option.product.uom} in stock`}
+                    {` · ${formatCurrency(Number(option.productBarcode?.salePrice ?? option.product.salePrice))} / ${option.productBarcode?.uom || option.product.uom} · ${option.product.availableQty} ${option.product.uom} in stock`}
                   </Typography>
                 </Box>
                 <Chip
@@ -298,7 +318,12 @@ export function BarcodeCell({
   const [typing, setTyping] = useState(null);
   const wrapRef = useRef(null);
   const highlightedRef = useRef(null);
-  const shown = typing ?? (line ? (index.barcodeByCode[line.code] || '') : '');
+  // A row shows the barcode it was scanned with. Items that have no barcodes of
+  // their own on the product fall back to the first barcode on file (label /
+  // receipt), as before.
+  const lineProduct = line ? index.productByCode[line.code] : null;
+  const hasOwnBarcodes = Boolean(lineProduct?.barcodes?.length);
+  const shown = typing ?? (line ? (line.barcode || (hasOwnBarcodes ? '' : (index.barcodeByCode[line.code] || ''))) : '');
 
   // Suggestions: barcodes keyed in on Stock Receipts (matched by barcode, item
   // code or item name) PLUS products whose Short ID contains what is typed — so
@@ -319,7 +344,7 @@ export function BarcodeCell({
   const commit = (entry) => {
     setTyping(null);
     highlightedRef.current = null;
-    onSelect(entry.code);
+    onSelect(entry.code, entry.barcode || null);
     if (!line) focusFirstInputOfRow(wrapRef.current);
   };
 
@@ -333,7 +358,7 @@ export function BarcodeCell({
       onNotify(`No item found for barcode / Short ID "${String(typing).trim()}"`, 'warning');
       return;
     }
-    onSelect(hit.code);
+    onSelect(hit.code, hit.barcode || null);
     if (!line) focusFirstInputOfRow(wrapRef.current);
   };
 

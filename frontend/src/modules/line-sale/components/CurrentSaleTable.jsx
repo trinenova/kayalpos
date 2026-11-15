@@ -11,10 +11,11 @@ import DataTable from '../../../components/common/DataTable';
 import { formatCurrency } from '../../../utils/format';
 import RecentSalesDialog from './RecentSalesDialog';
 import ItemSearchCell, { BarcodeCell, useItemSearchIndex } from './ItemSearchCell';
+import { stepFor, minQtyFor, round3 } from '../uomRules';
 
 // Sentinel row appended after the last real line — it is the "new item" row.
 const BLANK_KEY = '__new__';
-const BLANK_ROW = { code: BLANK_KEY, blank: true };
+const BLANK_ROW = { code: BLANK_KEY, key: BLANK_KEY, blank: true };
 
 // Editable unit-price cell. Keeps what is being typed locally so partial input
 // ("1", "12.", ...) works, pushes valid numbers to the cart as you type, and
@@ -36,11 +37,75 @@ function PriceCell({ row, onPriceChange }) {
         const next = e.target.value.replace(/[^0-9.]/g, '');
         if ((next.match(/\./g) || []).length > 1) return;
         setText(next);
-        if (next !== '' && next !== '.') onPriceChange?.(row.code, Number(next));
+        if (next !== '' && next !== '.') onPriceChange?.(row.key, Number(next));
       }}
       slotProps={{ htmlInput: { inputMode: 'decimal', 'aria-label': `Price for ${row.name || row.code}`, style: { padding: '6px 8px', textAlign: 'right', fontSize: 14 } } }}
       sx={{ width: 96 }}
     />
+  );
+}
+
+const fmtQty = (n) => String(round3(n));
+
+// Editable quantity cell. Decimals are allowed (0.25 Kg) — up to 3
+// places — for every UOM. Like PriceCell it keeps
+// the typed text locally so partial input ("0.", ".5") works, pushes valid
+// numbers to the cart as you type, and snaps back to the cart value on blur
+// (an empty / zero entry reverts to the last valid quantity).
+function QtyCell({ row, onQtyChange }) {
+  const unit = { uom: row.enteredUom };
+  const step = stepFor(unit);
+  const min = minQtyFor(unit);
+  const [text, setText] = useState(fmtQty(row.enteredQty));
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!focused) setText(fmtQty(row.enteredQty));
+  }, [row.enteredQty, focused]);
+
+  const commit = (n) => onQtyChange?.(row.key, n);
+  return (
+    <Stack direction="row" spacing={0.25} sx={{ alignItems: 'center' }}>
+      <IconButton
+        size="small"
+        data-no-enter
+        aria-label="Decrease quantity"
+        onClick={() => commit(Math.max(min, round3(row.enteredQty - step)))}
+        disabled={row.enteredQty - step < min}
+      >
+        <RemoveCircleOutlineIcon fontSize="small" />
+      </IconButton>
+      <TextField
+        size="small"
+        variant="outlined"
+        value={text}
+        onFocus={(e) => { setFocused(true); e.target.select(); }}
+        onBlur={() => setFocused(false)}
+        onChange={(e) => {
+          const next = e.target.value.replace(/[^0-9.]/g, '');
+          if ((next.match(/\./g) || []).length > 1) return;
+          if (/\.\d{4,}$/.test(next)) return; // max 3 decimal places
+          setText(next);
+          const n = Number(next);
+          if (next !== '' && next !== '.' && n >= min) commit(n);
+        }}
+        slotProps={{
+          htmlInput: {
+            inputMode: 'decimal',
+            'aria-label': `Quantity for ${row.name || row.code}`,
+            style: { padding: '6px 4px', textAlign: 'center', fontSize: 14, fontWeight: 700 },
+          },
+        }}
+        sx={{ width: 76 }}
+      />
+      <IconButton
+        size="small"
+        data-no-enter
+        aria-label="Increase quantity"
+        onClick={() => commit(round3(row.enteredQty + step))}
+      >
+        <AddCircleOutlineIcon fontSize="small" sx={{ color: 'primary.main' }} />
+      </IconButton>
+    </Stack>
   );
 }
 
@@ -56,7 +121,7 @@ function PriceCell({ row, onPriceChange }) {
  * Price / QTY (+/- stepper) / Total sit in the same row as the item.
  */
 export default function CurrentSaleTable({
-  lines, onQtyChange, onPriceChange, onRemove, products, onAddItem, onReplaceItem, onNotify,
+  lines, onQtyChange, onUomChange, onPriceChange, onRemove, products, onAddItem, onReplaceItem, onNotify,
   counters = [], counter = '', onCounterChange,
 }) {
   const index = useItemSearchIndex(products);
@@ -72,18 +137,20 @@ export default function CurrentSaleTable({
   // Picking/scanning in either the Item or the Barcode cell: the blank row
   // adds a new line (and the table opens the next blank row), a filled row
   // swaps that line's item.
-  const selectForRow = (row) => (code) => (
-    row.blank ? onAddItem(code) : onReplaceItem(row.code, code)
+  // `barcode` is the barcode the item was scanned / picked with (if any): a
+  // barcode with its own price bills the line at that price and UOM.
+  const selectForRow = (row) => (code, barcode = null) => (
+    row.blank ? onAddItem(code, barcode) : onReplaceItem(row.key, code, barcode)
   );
 
   const columns = [
-    { key: 'index', label: '#', width: '5%', render: (_row, i) => i + 1 },
+    { key: 'index', label: '#', width: '4%', render: (_row, i) => i + 1 },
     // Barcode is the first field of every row, so a scanner can feed the
     // table straight away; Tab then moves on to Item Name.
     {
       key: 'barcode',
       label: 'Barcode',
-      width: '17%',
+      width: '14%',
       render: (row) => (
         <BarcodeCell
           index={index}
@@ -110,44 +177,62 @@ export default function CurrentSaleTable({
       ),
     },
     {
+      key: 'uom',
+      label: 'UOM',
+      width: '11%',
+      render: (row) => {
+        if (row.blank) return null;
+        const options = row.uomOptions?.length ? row.uomOptions : [row.enteredUom];
+        if (options.length < 2 || !onUomChange) {
+          return <Typography variant="body2" sx={{ fontWeight: 600 }}>{row.enteredUom}</Typography>;
+        }
+        return (
+          <TextField
+            select
+            size="small"
+            value={row.enteredUom}
+            onChange={(e) => onUomChange(row.key, e.target.value)}
+            slotProps={{ htmlInput: { 'aria-label': `UOM for ${row.name || row.code}` } }}
+            sx={{ minWidth: 84, '& .MuiSelect-select': { py: '6px', fontSize: 14, fontWeight: 600 } }}
+          >
+            {options.map((u) => <MenuItem key={u} value={u}>{u}</MenuItem>)}
+          </TextField>
+        );
+      },
+    },
+    {
       key: 'price',
       label: 'Price',
-      width: '15%',
+      width: '14%',
       render: (row) => (row.blank ? null : (
-        onPriceChange
-          ? <PriceCell row={row} onPriceChange={onPriceChange} />
-          : <Typography variant="body2">{formatCurrency(row.price, { decimals: true })}</Typography>
+        // Price is per the item's base unit (per Kg, per Nos) whatever UOM the
+        // quantity is entered in — shown under the field so it is clear
+        // what unit the rate applies to.
+        <Stack spacing={0}>
+          {onPriceChange
+            ? <PriceCell row={row} onPriceChange={onPriceChange} />
+            : <Typography variant="body2">{formatCurrency(row.price, { decimals: true })}</Typography>}
+          <Typography variant="caption" color="text.secondary">per {row.uom}</Typography>
+        </Stack>
       )),
     },
     {
       key: 'qty',
-      label: 'QTY',
-      width: '19%',
-      render: (row) => (row.blank ? null : (
-        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-          <IconButton size="small" data-no-enter onClick={() => onQtyChange(row.code, row.qty - 1)} disabled={row.qty <= 1}>
-            <RemoveCircleOutlineIcon fontSize="small" />
-          </IconButton>
-          <Typography variant="body2" sx={{ fontWeight: 700, width: 22, textAlign: 'center' }}>
-            {row.qty}
-          </Typography>
-          <IconButton size="small" data-no-enter onClick={() => onQtyChange(row.code, row.qty + 1)}>
-            <AddCircleOutlineIcon fontSize="small" sx={{ color: 'primary.main' }} />
-          </IconButton>
-        </Stack>
-      )),
+      label: 'Qty / Weight',
+      width: '17%',
+      render: (row) => (row.blank ? null : <QtyCell row={row} onQtyChange={onQtyChange} />),
     },
     {
       key: 'total',
       label: 'Total',
       align: 'right',
-      width: '14%',
+      width: '13%',
       render: (row) => (row.blank ? null : (
         <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', justifyContent: 'flex-end' }}>
           <Typography variant="body2" sx={{ fontWeight: 700 }}>
             {formatCurrency(row.qty * row.price, { decimals: true })}
           </Typography>
-          <IconButton size="small" color="error" data-no-enter onClick={() => onRemove(row.code)}>
+          <IconButton size="small" color="error" data-no-enter onClick={() => onRemove(row.key)}>
             <DeleteOutlineOutlinedIcon fontSize="small" />
           </IconButton>
         </Stack>
@@ -190,7 +275,7 @@ export default function CurrentSaleTable({
         <DataTable
           columns={columns}
           rows={rows}
-          getRowKey={(r) => r.code}
+          getRowKey={(r) => r.key}
           fitContainer
         />
       </Box>

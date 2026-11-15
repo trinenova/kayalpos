@@ -40,6 +40,13 @@ const UNPAGINATED_LIMIT = 1000;
  *   needs a related list the plain list view doesn't (e.g. Outlet's
  *   `{ contacts: { orderBy: { createdAt: 'asc' } } }`). Omit for the plain
  *   scalar-only row every other module already gets.
+ * @param {object} [opts.listInclude] - Prisma `include` for the list route
+ *   (used instead of `listSelect`), e.g. a product's `barcodes`.
+ * @param {object} [opts.writeInclude] - Prisma `include` applied to the row
+ *   returned by create / update.
+ * @param {(data: object, req: object) => object} [opts.beforeCreate] - maps the
+ *   validated body to the Prisma `data` for create (e.g. nested child rows).
+ * @param {(data: object, req: object, existing: object) => object} [opts.beforeUpdate] - same for update.
  * @param {number} [opts.cacheTtlMs] - list-response cache TTL; 0 disables caching.
  */
 export function createCrudRouter({
@@ -53,6 +60,10 @@ export function createCrudRouter({
   codeLength = 3,
   listSelect,
   detailInclude,
+  listInclude,
+  writeInclude,
+  beforeCreate,
+  beforeUpdate,
   cacheTtlMs = 15_000,
 }) {
   const router = Router();
@@ -109,6 +120,7 @@ export function createCrudRouter({
             where,
             orderBy,
             select: listSelect,
+            include: listInclude,
             skip: (pageNum - 1) * size,
             take: size,
           }),
@@ -123,7 +135,7 @@ export function createCrudRouter({
       } else {
         // Legacy shape (no meta) for existing callers — still bounded so an
         // old client can never pull an unbounded table into memory.
-        const rows = await model.findMany({ where, orderBy, select: listSelect, take: UNPAGINATED_LIMIT });
+        const rows = await model.findMany({ where, orderBy, select: listSelect, include: listInclude, take: UNPAGINATED_LIMIT });
         payload = { success: true, data: rows };
       }
 
@@ -146,13 +158,15 @@ export function createCrudRouter({
 
   router.post('/', validateRequest(createSchema), async (req, res, next) => {
     try {
-      const data = { ...req.body, tenantId: req.user.tenantId };
+      let data = { ...req.body, tenantId: req.user.tenantId };
 
       if (codePrefix && !data[codeField]) {
         data[codeField] = await nextCode({ model, tenantId: req.user.tenantId, prefix: codePrefix, length: codeLength, field: codeField });
       }
 
-      const row = await model.create({ data });
+      if (beforeCreate) data = beforeCreate(data, req);
+
+      const row = await model.create({ data, include: writeInclude });
       listCache.clear();
       res.status(201).json({ success: true, data: row });
     } catch (err) {
@@ -165,7 +179,8 @@ export function createCrudRouter({
       const existing = await model.findFirst({ where: { id: req.params.id, tenantId: req.user.tenantId } });
       if (!existing) throw new ApiError(404, 'Record not found');
 
-      const row = await model.update({ where: { id: req.params.id }, data: req.body });
+      const data = beforeUpdate ? beforeUpdate({ ...req.body }, req, existing) : req.body;
+      const row = await model.update({ where: { id: req.params.id }, data, include: writeInclude });
       listCache.clear();
       res.json({ success: true, data: row });
     } catch (err) {
