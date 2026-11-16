@@ -24,7 +24,6 @@ import FormTextField from '../../components/form/FormTextField';
 import FormPasswordField from '../../components/form/FormPasswordField';
 import FormSelect from '../../components/form/FormSelect';
 import FormCheckbox from '../../components/form/FormCheckbox';
-import AppLogo from '../../components/common/AppLogo';
 import HealthStatusTag from '../../components/common/HealthStatusTag';
 import { useHealthStatus } from '../../hooks/useHealthStatus';
 import { useGetPublicOutletsQuery } from '../../api/outletApi';
@@ -33,7 +32,7 @@ import LoginMarketingPanel from './components/LoginMarketingPanel';
 import loginBackground from '../../assets/LoginImage5.png';
 
 const APP_VERSION = '1.0.0';
-const TENANT_NAME = 'Kayal Agro Foods'; // TODO: replace with tenant context once multi-tenant lookup exists
+const TENANT_NAME = 'Sri Maruthamalai Andavar'; // TODO: replace with tenant context once multi-tenant lookup exists
 
 export default function LoginPage() {
   const dispatch = useAppDispatch();
@@ -170,10 +169,15 @@ export default function LoginPage() {
         >
           <Stack spacing={1.75} sx={{ width: '100%' }}>
             <Stack spacing={0.75} sx={{ alignItems: 'center' }}>
-              <AppLogo iconSize={32} titleFontSize="1.05rem" subtitleFontSize="0.56rem" />
+              <Box
+                component="img"
+                src="/smalogo2.png"
+                alt={TENANT_NAME}
+                sx={{ height: 96, width: 'auto', objectFit: 'contain' }}
+              />
               <Box sx={{ textAlign: 'center' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  Welcome to <Box component="span" sx={{ color: 'primary.main' }}>Nexora</Box> POS
+                  Welcome to <Box component="span" sx={{ color: 'primary.main' }}>SMA</Box> POS
                 </Typography>
                 <Box sx={{ width: 44, height: 3, bgcolor: 'primary.main', borderRadius: 1, mx: 'auto', mt: 0.5 }} />
                 <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 600, color: 'text.secondary' }}>

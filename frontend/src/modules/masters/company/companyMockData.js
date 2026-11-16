@@ -14,5 +14,5 @@ export const REGISTERED_ADDRESS = {
 };
 
 export const CONTACT_PERSONS = [
-  { id: 'CP-001', name: 'R. Kannan', designation: 'Managing Director', email: 'kannan@kayalagro.com', phone: '+91 94422 33445', primary: true },
+  { id: 'CP-001', name: 'R. Kannan', designation: 'Managing Director', email: 'kannan@sma.com', phone: '+91 94422 33445', primary: true },
 ];

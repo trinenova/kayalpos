@@ -105,7 +105,7 @@ async function main() {
   const warehouses = [];
   for (const w of WAREHOUSES) {
     warehouses.push(await ensure('warehouse', { tenantId, code: w.code }, {
-      ...w, isActive: true, companyName: 'Kayal Agro Foods', outletId: outlet.id, state: 'Tamil Nadu', country: 'India', address: `${w.location}, Coimbatore`, capacityUnit: 'sqft', logoName: 'logo.png', ...SAP,
+      ...w, isActive: true, companyName: 'Sri Maruthamalai Andavar', outletId: outlet.id, state: 'Tamil Nadu', country: 'India', address: `${w.location}, Coimbatore`, capacityUnit: 'sqft', logoName: 'logo.png', ...SAP,
     }));
   }
 

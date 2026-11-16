@@ -19,27 +19,27 @@ export const ORIGINAL_INVOICE = {
 // Items on the original invoice, with what's still eligible to be returned.
 export const RETURNABLE_ITEMS = [
   {
-    id: 'KPR25', code: 'KPR25', name: 'Kayal Ponni Rice 25kg', batch: 'BATCH-2405',
+    id: 'KPR25', code: 'KPR25', name: 'SMA Ponni Rice 25kg', batch: 'BATCH-2405',
     uom: 'Bag', saleQty: 2, returnableQty: 2, mrp: 1950, rate: 1850, initial: 'P', color: '#F26B21',
   },
   {
-    id: 'KIR25', code: 'KIR25', name: 'Kayal Idly Rice 25kg', batch: 'BATCH-2405',
+    id: 'KIR25', code: 'KIR25', name: 'SMA Idly Rice 25kg', batch: 'BATCH-2405',
     uom: 'Bag', saleQty: 2, returnableQty: 2, mrp: 1800, rate: 1700, initial: 'I', color: '#22A06B',
   },
   {
-    id: 'KGH01', code: 'KGH01', name: 'Kayal Ghee 1L', batch: '-',
+    id: 'KGH01', code: 'KGH01', name: 'SMA Ghee 1L', batch: '-',
     uom: 'Nos', saleQty: 1, returnableQty: 1, mrp: 620, rate: 580, initial: 'G', color: '#F5A623',
   },
   {
-    id: 'KGO01', code: 'KGO01', name: 'Kayal Groundnut Oil 1L', batch: '-',
+    id: 'KGO01', code: 'KGO01', name: 'SMA Groundnut Oil 1L', batch: '-',
     uom: 'Nos', saleQty: 2, returnableQty: 2, mrp: 180, rate: 165, initial: 'O', color: '#2563EB',
   },
   {
-    id: 'KTD01', code: 'KTD01', name: 'Kayal Toor Dhal 1kg', batch: '-',
+    id: 'KTD01', code: 'KTD01', name: 'SMA Toor Dhal 1kg', batch: '-',
     uom: 'Pcs', saleQty: 1, returnableQty: 1, mrp: 145, rate: 135, initial: 'T', color: '#D97706',
   },
   {
-    id: 'KSG01', code: 'KSG01', name: 'Kayal Sugar 1kg', batch: '-',
+    id: 'KSG01', code: 'KSG01', name: 'SMA Sugar 1kg', batch: '-',
     uom: 'Pcs', saleQty: 2, returnableQty: 2, mrp: 52, rate: 48, initial: 'S', color: '#E5484D',
   },
 ];

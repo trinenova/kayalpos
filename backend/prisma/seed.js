@@ -19,15 +19,15 @@ async function main() {
   const tenant = await prisma.tenant.upsert({
     where: { slug: 'kayal-agro-foods' },
     update: {},
-    create: { name: 'Kayal Agro Foods', slug: 'kayal-agro-foods' },
+    create: { name: 'Sri Maruthamalai Andavar', slug: 'kayal-agro-foods' },
   });
 
   const outletNames = [
-    { code: 'OUT001', name: 'Kayal Agro Foods - Main Outlet' },
-    { code: 'OUT002', name: 'Kayal Agro Foods - Head Office' },
-    { code: 'OUT003', name: 'Kayal Agro Foods - Saravanampatti' },
-    { code: 'OUT004', name: 'Kayal Agro Foods - Peelamedu' },
-    { code: 'OUT005', name: 'Kayal Agro Foods - Singanallur' },
+    { code: 'OUT001', name: 'SMA - Main Outlet' },
+    { code: 'OUT002', name: 'SMA - Head Office' },
+    { code: 'OUT003', name: 'SMA - Saravanampatti' },
+    { code: 'OUT004', name: 'SMA - Peelamedu' },
+    { code: 'OUT005', name: 'SMA - Singanallur' },
   ];
 
   for (const outlet of outletNames) {

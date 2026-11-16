@@ -6,7 +6,7 @@
 export const SHIFT_INFO = {
   businessDate: '14 Oct 2026',
   businessDay: 'Wed',
-  store: 'Kayal Store',
+  store: 'SMA Store',
   branch: 'Main Branch',
   posTerminal: 'POS-01',
   terminalLocation: 'Front Counter',
