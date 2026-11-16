@@ -18,7 +18,7 @@ export const LOCATION_OPTIONS = [
 
 export const COMPANY_OPTIONS = [
   { value: '', label: 'Select Company', disabled: true },
-  { value: 'Kayal Agro Foods Pvt Ltd', label: 'Kayal Agro Foods Pvt Ltd' },
+  { value: 'Sri Maruthamalai Andavar', label: 'Sri Maruthamalai Andavar' },
 ];
 
 export const STATE_OPTIONS = [

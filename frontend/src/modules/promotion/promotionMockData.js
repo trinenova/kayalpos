@@ -154,11 +154,11 @@ export const PROMOTIONS = [...ACTIVE_PROMOTIONS, ...UPCOMING_PROMOTIONS, ...EXPI
   .sort((a, b) => a.code.localeCompare(b.code));
 
 const ITEM_LIBRARY = [
-  { code: 'KPR25', name: 'Kayal Ponni Rice 25kg', initial: 'P', color: '#F26B21' },
-  { code: 'KIR25', name: 'Kayal Idly Rice 25kg', initial: 'I', color: '#F5A623' },
-  { code: 'KSW25', name: 'Kayal Samba Wheat 25kg', initial: 'S', color: '#8B5CF6' },
-  { code: 'KTD01', name: 'Kayal Toor Dhal 1kg', initial: 'T', color: '#D97706' },
-  { code: 'KSG01', name: 'Kayal Sugar 1kg', initial: 'S', color: '#E5484D' },
+  { code: 'KPR25', name: 'SMA Ponni Rice 25kg', initial: 'P', color: '#F26B21' },
+  { code: 'KIR25', name: 'SMA Idly Rice 25kg', initial: 'I', color: '#F5A623' },
+  { code: 'KSW25', name: 'SMA Samba Wheat 25kg', initial: 'S', color: '#8B5CF6' },
+  { code: 'KTD01', name: 'SMA Toor Dhal 1kg', initial: 'T', color: '#D97706' },
+  { code: 'KSG01', name: 'SMA Sugar 1kg', initial: 'S', color: '#E5484D' },
 ];
 
 // Per-status "selected promotion" detail record + right-panel copy. Only

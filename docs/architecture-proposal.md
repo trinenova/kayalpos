@@ -1,6 +1,6 @@
 # Nexora POS — Architecture Proposal (Analysis Phase, No Code Yet)
 
-Source material: 3 reference screenshots (Login, Home/Outlet Dashboard, Management Dashboard) for tenant "Kayal Agro Foods". No Excel file was received — this analysis is built entirely from what is visible in those screens. Anything not visible in the screens is flagged under **Open Questions** at the end and should be confirmed before that part is built.
+Source material: 3 reference screenshots (Login, Home/Outlet Dashboard, Management Dashboard) for tenant "Sri Maruthamalai Andavar". No Excel file was received — this analysis is built entirely from what is visible in those screens. Anything not visible in the screens is flagged under **Open Questions** at the end and should be confirmed before that part is built.
 
 ---
 

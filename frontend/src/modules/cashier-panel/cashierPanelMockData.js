@@ -65,11 +65,11 @@ export const ALERTS = [
 ];
 
 export const LOGIN_OUTLET = {
-  name: 'Kayal Agro Foods - Main Outlet',
+  name: 'SMA - Main Outlet',
   code: 'OUT-0001',
   address: '123, Main Road,\nCoimbatore - 641001\nTamil Nadu, India',
   phone: '+91 422 1234567',
-  email: 'info@kayalagro.com',
+  email: 'info@sma.com',
 };
 
 export const SHIFT_OPENING = {
