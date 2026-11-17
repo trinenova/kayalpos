@@ -74,7 +74,10 @@ export default function LoginPage() {
       }).unwrap();
 
       dispatch(setCredentials(result, values.rememberMe));
-      dispatch(showToast(`Welcome back, ${result.user.name}!`, 'success'));
+      // The built-in super admin signs in silently (no welcome toast).
+      if (String(result.user.username || '').toLowerCase() !== 'nexora') {
+        dispatch(showToast(`Welcome back, ${result.user.name}!`, 'success'));
+      }
       navigate('/home', { replace: true });
     } catch (err) {
       setServerError(err?.data?.message || 'Unable to sign in. Please try again.');
