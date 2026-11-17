@@ -5,6 +5,7 @@ import { createBarcodeLabelSchema, updateBarcodeLabelSchema } from './barcodeLab
 import {
   listBarcodeLabelBatches, getBarcodeLabelBatch, createBarcodeLabelBatch, updateBarcodeLabelBatch,
   deleteBarcodeLabelBatch, nextCodePreview, getBarcodeLabelSummary, getBarcodeLabelStatusSummary,
+  generateBarcodesForBatch, listBarcodeGenerationHistory,
 } from './barcodeLabel.service.js';
 
 const router = Router();
@@ -39,6 +40,16 @@ router.get('/status-summary/:status', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Feeds the "Barcode History" tab — see barcodeLabel.service.js's
+// listBarcodeGenerationHistory. Placed before '/:id' so 'history' is never
+// mistaken for a batch id, same reason as 'status-summary' above.
+router.get('/history', async (req, res, next) => {
+  try {
+    const rows = await listBarcodeGenerationHistory(req.user.tenantId, req.query);
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
 router.get('/', async (req, res, next) => {
   try {
     const rows = await listBarcodeLabelBatches(req.user.tenantId, req.query);
@@ -57,6 +68,18 @@ router.post('/', validateRequest(createBarcodeLabelSchema), async (req, res, nex
   try {
     const row = await createBarcodeLabelBatch(req.user.tenantId, req.body, req.user);
     res.status(201).json({ success: true, data: row });
+  } catch (err) { next(err); }
+});
+
+// The real "Generate" action behind Print / Preview's "Generate & Save to
+// History" button — resolves and permanently logs every item's barcode
+// value and flips the batch to 'printed' (see generateBarcodesForBatch).
+// No request body: there's nothing for the client to supply beyond which
+// batch.
+router.post('/:id/generate', async (req, res, next) => {
+  try {
+    const result = await generateBarcodesForBatch(req.user.tenantId, req.params.id, req.user);
+    res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
 

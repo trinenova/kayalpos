@@ -111,6 +111,12 @@ function ItemRow({
             setValue(`items.${index}.itemName`, product.name, { shouldDirty: true });
             setValue(`items.${index}.hsnCode`, product.hsnSac || '', { shouldDirty: true });
             setValue(`items.${index}.uom`, product.uom || '', { shouldDirty: true });
+            // Carry over the Product master's own Barcode when it has one,
+            // so the real value (not a made-up one) is what later gets
+            // rendered/generated — see barcodeLabel.service.js's
+            // resolveBarcodeValue, which falls back to the Item Code only
+            // when this is left blank.
+            setValue(`items.${index}.barcode`, product.barcode || '', { shouldDirty: true });
           }}
         />
       </TableCell>

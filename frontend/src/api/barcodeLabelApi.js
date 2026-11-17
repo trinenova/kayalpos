@@ -3,8 +3,7 @@ import { baseApi } from './baseApi';
 // Hand-rolled (not createCrudApi), same reason as Sales Order/Sales Invoice:
 // dedicated summary endpoints the generic crudFactory pattern doesn't have a
 // place for, plus a plain `status` list filter (no live-derived state here —
-// see backend/src/modules/barcode-label's model comment on why 'printed'
-// isn't reachable yet).
+// 'printed' is now reachable through BarcodeLabelGenerate below).
 const barcodeLabelApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     BarcodeLabelList: builder.query({
@@ -64,6 +63,33 @@ const barcodeLabelApi = baseApi.injectEndpoints({
         { type: 'BarcodeLabel', id: 'SUMMARY' },
       ],
     }),
+    // The real "Generate" action behind Print / Preview's "Generate & Save
+    // to History" button (see BarcodePrintDialog) — POSTs to
+    // /barcode-labels/:id/generate, which logs every item's resolved
+    // barcode value to the permanent history and flips the batch to
+    // 'printed'. Invalidates every tile/list/tab that status change can
+    // affect, plus the history list itself.
+    BarcodeLabelGenerate: builder.mutation({
+      query: (id) => ({ url: `/barcode-labels/${id}/generate`, method: 'POST' }),
+      transformResponse: (response) => response.data,
+      invalidatesTags: (result, error, id) => [
+        { type: 'BarcodeLabel', id },
+        { type: 'BarcodeLabel', id: 'LIST' },
+        { type: 'BarcodeLabel', id: 'SUMMARY' },
+        { type: 'BarcodeLabel', id: 'STATUS_SUMMARY_draft' },
+        { type: 'BarcodeLabel', id: 'STATUS_SUMMARY_pending-print' },
+        { type: 'BarcodeLabel', id: 'STATUS_SUMMARY_printed' },
+        { type: 'BarcodeHistory', id: 'LIST' },
+      ],
+    }),
+    // Feeds the "Barcode History" tab — every barcode value ever actually
+    // generated for print, newest first (see barcodeLabel.service.js's
+    // listBarcodeGenerationHistory).
+    BarcodeHistoryList: builder.query({
+      query: (params) => ({ url: '/barcode-labels/history', params }),
+      transformResponse: (response) => response.data,
+      providesTags: [{ type: 'BarcodeHistory', id: 'LIST' }],
+    }),
   }),
 });
 
@@ -75,3 +101,5 @@ export const useBarcodeLabelStatusSummaryQuery = barcodeLabelApi.useBarcodeLabel
 export const useCreateBarcodeLabelMutation = barcodeLabelApi.useBarcodeLabelCreateMutation;
 export const useUpdateBarcodeLabelMutation = barcodeLabelApi.useBarcodeLabelUpdateMutation;
 export const useDeleteBarcodeLabelMutation = barcodeLabelApi.useBarcodeLabelDeleteMutation;
+export const useGenerateBarcodeLabelMutation = barcodeLabelApi.useBarcodeLabelGenerateMutation;
+export const useBarcodeHistoryQuery = barcodeLabelApi.useBarcodeHistoryListQuery;

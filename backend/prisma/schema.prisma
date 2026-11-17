@@ -56,6 +56,7 @@ model Tenant {
   salesOrders         SalesOrder[]
   salesInvoices       SalesInvoice[]
   barcodeLabelBatches BarcodeLabelBatch[]
+  barcodeGenerationLogs BarcodeGenerationLog[]
   stockIndents        StockIndent[]
   stockTransfers      StockTransfer[]
   stockReceipts       StockReceipt[]
@@ -1595,6 +1596,7 @@ model BarcodeLabelBatch {
   updatedBy String? @map("UpdatedBy")
 
   items BarcodeLabelItem[]
+  generationLogs BarcodeGenerationLog[]
 
   @@unique([tenantId, code])
   @@index([tenantId, status])
@@ -1621,6 +1623,40 @@ model BarcodeLabelItem {
   fromSerialBatch String?           @map("FromSerialBatch")
   toSerialBatch   String?           @map("ToSerialBatch")
 
+  @@index([batchId])
+}
+
+// Append-only log of every barcode a user has actually generated for print
+// (see generateBarcodesForBatch in barcodeLabel.service.js) — one row per
+// item, written the moment "Generate & Save to History" runs, never
+// afterwards edited or recomputed. Deliberately separate from
+// BarcodeLabelItem: that row is the batch's *current* saved line (it can be
+// edited or the whole batch deleted), while this is the permanent record of
+// what barcode value was actually generated, for which item, when, and by
+// whom — so editing or deleting a batch later never erases its own
+// generation history. `batchId` is nullable with onDelete: SetNull for
+// exactly that reason. `barcodeValue` is whatever generateBarcodesForBatch
+// resolved at the time (the item's own Barcode if one was set/picked from
+// the Product master, otherwise its Item Code) — a frozen snapshot, not a
+// live join, same "frozen snapshot" rule every other module's own saved
+// rows follow.
+model BarcodeGenerationLog {
+  id           String             @id @default(cuid()) @map("Id")
+  tenantId     String             @map("TenantId")
+  tenant       Tenant             @relation(fields: [tenantId], references: [id])
+  batchId      String?            @map("BatchId")
+  batch        BarcodeLabelBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  batchCode    String             @map("BatchCode")
+  itemCode     String             @map("ItemCode")
+  itemName     String             @map("ItemName")
+  barcodeValue String             @map("BarcodeValue")
+  barcodeType  String             @map("BarcodeType")
+  printQty     Decimal            @default(0) @map("PrintQty") @db.Decimal(12, 2)
+  generatedBy  String             @map("GeneratedBy")
+  createdAt    DateTime           @default(now()) @map("CreatedAt")
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, itemCode])
   @@index([batchId])
 }
 
