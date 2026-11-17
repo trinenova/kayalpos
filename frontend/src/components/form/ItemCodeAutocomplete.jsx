@@ -44,7 +44,10 @@ export default function ItemCodeAutocomplete({
             // "PR…") while the dropdown opens wider than the cell and lists
             // "code — name" in full.
             getOptionLabel={(opt) => (compact ? (opt?.code || '') : (opt?.name ? `${opt.code} — ${opt.name}` : (opt?.code || '')))}
-            slotProps={compact ? { popper: { placement: 'bottom-start', sx: { width: 'fit-content !important', minWidth: 320, maxWidth: 520 } } } : undefined}
+            // The dropdown always opens at least as wide as its text needs
+            // (not locked to the narrow grid cell), so codes and names are
+            // never squeezed into a wrapped column.
+            slotProps={{ popper: { placement: 'bottom-start', sx: { width: 'fit-content !important', minWidth: 320, maxWidth: 520 } } }}
             renderOption={compact ? (props, opt) => {
               const { key, ...rest } = props;
               return (

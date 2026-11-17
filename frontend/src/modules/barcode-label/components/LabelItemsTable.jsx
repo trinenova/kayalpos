@@ -107,6 +107,7 @@ function ItemRow({
           control={control}
           name={`items.${index}.itemCode`}
           products={products}
+          compact
           onSelectProduct={(product) => {
             setValue(`items.${index}.itemName`, product.name, { shouldDirty: true });
             setValue(`items.${index}.hsnCode`, product.hsnSac || '', { shouldDirty: true });
