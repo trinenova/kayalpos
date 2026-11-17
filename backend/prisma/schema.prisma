@@ -56,6 +56,7 @@ model Tenant {
   salesOrders         SalesOrder[]
   salesInvoices       SalesInvoice[]
   barcodeLabelBatches BarcodeLabelBatch[]
+  barcodeGenerationLogs BarcodeGenerationLog[]
   stockIndents        StockIndent[]
   stockTransfers      StockTransfer[]
   stockReceipts       StockReceipt[]
@@ -573,6 +574,7 @@ model Product {
   heldBillLines HeldBillLine[]
   tczLines      TczPos1[]
   returnItems   SalesReturnItem[]
+  returnExchangeItems SalesReturnExchangeItem[]
   sellingPrices SellingPrice[]
   batchSerials  BatchSerial[]
   priceHistory  PriceHistory[]
@@ -734,6 +736,7 @@ model ProductLot {
   updatedAt     DateTime  @updatedAt @map("UpdatedAt")
 
   saleLines TczPos1[]
+  returnExchangeLines SalesReturnExchangeItem[]
 
   @@index([tenantId, productId, receivedAt])
   @@index([productId, qtyRemaining])
@@ -1593,6 +1596,7 @@ model BarcodeLabelBatch {
   updatedBy String? @map("UpdatedBy")
 
   items BarcodeLabelItem[]
+  generationLogs BarcodeGenerationLog[]
 
   @@unique([tenantId, code])
   @@index([tenantId, status])
@@ -1619,6 +1623,40 @@ model BarcodeLabelItem {
   fromSerialBatch String?           @map("FromSerialBatch")
   toSerialBatch   String?           @map("ToSerialBatch")
 
+  @@index([batchId])
+}
+
+// Append-only log of every barcode a user has actually generated for print
+// (see generateBarcodesForBatch in barcodeLabel.service.js) — one row per
+// item, written the moment "Generate & Save to History" runs, never
+// afterwards edited or recomputed. Deliberately separate from
+// BarcodeLabelItem: that row is the batch's *current* saved line (it can be
+// edited or the whole batch deleted), while this is the permanent record of
+// what barcode value was actually generated, for which item, when, and by
+// whom — so editing or deleting a batch later never erases its own
+// generation history. `batchId` is nullable with onDelete: SetNull for
+// exactly that reason. `barcodeValue` is whatever generateBarcodesForBatch
+// resolved at the time (the item's own Barcode if one was set/picked from
+// the Product master, otherwise its Item Code) — a frozen snapshot, not a
+// live join, same "frozen snapshot" rule every other module's own saved
+// rows follow.
+model BarcodeGenerationLog {
+  id           String             @id @default(cuid()) @map("Id")
+  tenantId     String             @map("TenantId")
+  tenant       Tenant             @relation(fields: [tenantId], references: [id])
+  batchId      String?            @map("BatchId")
+  batch        BarcodeLabelBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  batchCode    String             @map("BatchCode")
+  itemCode     String             @map("ItemCode")
+  itemName     String             @map("ItemName")
+  barcodeValue String             @map("BarcodeValue")
+  barcodeType  String             @map("BarcodeType")
+  printQty     Decimal            @default(0) @map("PrintQty") @db.Decimal(12, 2)
+  generatedBy  String             @map("GeneratedBy")
+  createdAt    DateTime           @default(now()) @map("CreatedAt")
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, itemCode])
   @@index([batchId])
 }
 
@@ -1649,12 +1687,37 @@ model SalesReturn {
   cashierName    String    @map("CashierName")
   reason         String    @map("Reason")
   note           String?   @map("Note")
-  refundMode     String    @map("RefundMode")
+  // 'return' | 'exchange' — a plain stored column, not live-derived, since
+  // it's chosen once by the cashier at the top of the Sales Return screen
+  // and never changes after the return is saved. A 'return' settles by
+  // handing money back (refundMode/refundTo, unchanged); an 'exchange'
+  // settles by handing back different goods instead (exchangeItems below),
+  // with any price difference settled via settlementMode.
+  returnType     String    @default("return") @map("ReturnType")
+  // Only meaningful for returnType 'return' — null for an 'exchange' (see
+  // createSalesReturnSchema's superRefine, which requires refundTo only
+  // when refundMode is 'refund').
+  refundMode     String?   @map("RefundMode")
   refundTo       String?   @map("RefundTo")
+  // Only meaningful for returnType 'exchange': where the price difference
+  // between the returned goods and the new goods was settled — collected
+  // from the customer (exchangeGrandTotal > grandTotal) or refunded to them
+  // (exchangeGrandTotal < grandTotal). Null when the two are exactly equal
+  // (nothing to settle) or when returnType is 'return'.
+  settlementMode String?   @map("SettlementMode")
   subTotal       Decimal   @default(0) @map("SubTotal") @db.Decimal(12, 2)
   discountAmount Decimal   @default(0) @map("DiscountAmount") @db.Decimal(12, 2)
   taxAmount      Decimal   @default(0) @map("TaxAmount") @db.Decimal(12, 2)
   grandTotal     Decimal   @default(0) @map("GrandTotal") @db.Decimal(12, 2)
+  // The new goods' own totals, for an 'exchange' only (all zero for a plain
+  // 'return' — there are no exchangeItems to total).
+  exchangeSubTotal   Decimal @default(0) @map("ExchangeSubTotal") @db.Decimal(12, 2)
+  exchangeTaxAmount  Decimal @default(0) @map("ExchangeTaxAmount") @db.Decimal(12, 2)
+  exchangeGrandTotal Decimal @default(0) @map("ExchangeGrandTotal") @db.Decimal(12, 2)
+  // exchangeGrandTotal - grandTotal: positive means the customer paid this
+  // much more, negative means this much was refunded to them, zero means
+  // the exchange was even. Always 0 for a plain 'return'.
+  balanceAmount      Decimal @default(0) @map("BalanceAmount") @db.Decimal(12, 2)
   createdBy      String?   @map("CreatedBy")
   termsConditions String?   @map("TermsConditions")
   sapRef          String?   @map("SapRef")
@@ -1666,7 +1729,8 @@ model SalesReturn {
   updatedAt      DateTime  @updatedAt @map("UpdatedAt")
   updatedBy String? @map("UpdatedBy")
 
-  items SalesReturnItem[]
+  items         SalesReturnItem[]
+  exchangeItems SalesReturnExchangeItem[]
 
   @@unique([tenantId, returnNo])
   @@index([tenantId, createdAt])
@@ -1699,6 +1763,38 @@ model SalesReturnItem {
 
   @@index([returnId])
   @@index([docEntry, lineId])
+}
+
+// The new goods handed to the customer on an 'exchange'-type SalesReturn —
+// one frozen snapshot per line, the same "not a live join" rule
+// SalesReturnItem/SaleLine already follow, captured at exchange time from a
+// real Product (never fabricated). Unlike SalesReturnItem, there is no
+// original-bill line to point at here: this is a fresh pick from the
+// current catalog, priced and FIFO-allocated exactly like a Line Sale line
+// (see sale.service.js's createSale / allocateFifoForSale) — `lotId`/
+// `unitCost` are the same FIFO-lot bookkeeping Sale lines carry, so stock
+// and cost stay accurate for whichever purchase lot the exchanged unit
+// actually came out of. NULL for a line sold from stock that wasn't tied to
+// any open lot.
+model SalesReturnExchangeItem {
+  id        String      @id @default(cuid()) @map("Id")
+  returnId  String      @map("ReturnId")
+  return    SalesReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  productId String      @map("ProductId")
+  product   Product     @relation(fields: [productId], references: [id])
+  code      String      @map("Code")
+  name      String      @map("Name")
+  uom       String      @map("Uom")
+  qty       Decimal     @map("Qty") @db.Decimal(12, 3)
+  rate      Decimal     @map("Rate") @db.Decimal(12, 2)
+  taxRate   Decimal     @map("TaxRate") @db.Decimal(5, 4)
+  amount    Decimal     @map("Amount") @db.Decimal(12, 2)
+  lotId     String?     @map("LotId")
+  lot       ProductLot? @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  unitCost  Decimal?    @map("UnitCost") @db.Decimal(19, 6)
+
+  @@index([returnId])
+  @@index([productId])
 }
 
 // ---------------------------------------------------------------------------

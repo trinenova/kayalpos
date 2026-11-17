@@ -3,6 +3,7 @@ import { ApiError } from '../../middleware/errorHandler.js';
 
 const CODE_PREFIX = 'LBL';
 const CODE_LENGTH = 5;
+const HISTORY_TAKE = 1000;
 
 function round2(n) {
   return Math.round(n * 100) / 100;
@@ -141,8 +142,8 @@ export async function deleteBarcodeLabelBatch(tenantId, id) {
  * here is a real aggregate across this tenant's actual BarcodeLabelBatch
  * rows, computed at request time (never a stored/cached counter that could
  * drift). "Total Labels Printed" only sums batches actually marked
- * 'printed' — honestly zero today since nothing sets that status yet (see
- * the BarcodeLabelBatch model comment).
+ * 'printed' — see generateBarcodesForBatch below for the one action that
+ * actually sets that status.
  */
 export async function getBarcodeLabelSummary(tenantId) {
   const rows = await prisma.barcodeLabelBatch.findMany({
@@ -168,9 +169,7 @@ export async function getBarcodeLabelSummary(tenantId) {
  * Powers the Draft/Pending Print/Printed status pages' 4-tile strip (count +
  * three real aggregates) for one status at a time — count, total labels,
  * average labels per batch, and total line items across that status's
- * batches. All computed from real rows; a status with zero batches (currently
- * true of 'printed' — see the BarcodeLabelBatch model comment on why nothing
- * sets it yet) honestly returns zeros rather than any placeholder figure.
+ * batches. All computed from real rows.
  */
 export async function getBarcodeLabelStatusSummary(tenantId, status) {
   const rows = await prisma.barcodeLabelBatch.findMany({
@@ -189,4 +188,95 @@ export async function getBarcodeLabelStatusSummary(tenantId, status) {
     averageLabels: round2(averageLabels),
     totalItems,
   };
+}
+
+// A batch's items are free-text snapshots with no guaranteed Barcode value
+// (see the BarcodeLabelItem model comment) — the Barcode column is only
+// ever filled in when the user typed one in or picked a product that
+// already had one set on the Product master. Generating has to produce a
+// real, renderable value for every item regardless, so a blank Barcode
+// falls back to the item's own Item Code, which is always present and
+// always unique per tenant.
+function resolveBarcodeValue(item) {
+  const explicit = item.barcode && String(item.barcode).trim();
+  return explicit || item.itemCode;
+}
+
+/**
+ * The actual "generate barcode" action for a batch. For every item the
+ * batch currently holds, it resolves a real barcode value (see
+ * resolveBarcodeValue) and writes one permanent row to the append-only
+ * BarcodeGenerationLog — then marks the batch 'printed' (with a real
+ * `printedOn`), which is the only place in this module that status is ever
+ * set. Wrapped in a transaction so the log and the status flip either both
+ * happen or neither does.
+ *
+ * This never touches the batch's own items (no Barcode value is written
+ * back onto BarcodeLabelItem) — the history log is the permanent record of
+ * what was generated, while the batch's items stay exactly what the user
+ * last saved. The actual scannable barcode/QR image is rendered client-side
+ * from the `generated` values this returns (see frontend/src/modules/
+ * barcode-label/components/BarcodeImage.jsx) — nothing on the backend
+ * produces an image, only the resolved values and the permanent record that
+ * they were generated.
+ */
+export async function generateBarcodesForBatch(tenantId, id, actor) {
+  return prisma.$transaction(async (tx) => {
+    const batch = await tx.barcodeLabelBatch.findFirst({ where: { id, tenantId }, include: { items: true } });
+    if (!batch) throw new ApiError(404, 'Barcode & Label batch not found');
+    if (batch.items.length === 0) throw new ApiError(400, 'This batch has no items to generate barcodes for');
+
+    const generatedBy = actor?.name || 'Admin';
+    const generated = batch.items.map((item) => ({
+      itemCode: item.itemCode,
+      itemName: item.itemName,
+      barcodeValue: resolveBarcodeValue(item),
+      barcodeType: batch.barcodeType,
+      printQty: Number(item.printQty),
+    }));
+
+    await tx.barcodeGenerationLog.createMany({
+      data: generated.map((g) => ({
+        tenantId,
+        batchId: batch.id,
+        batchCode: batch.code,
+        itemCode: g.itemCode,
+        itemName: g.itemName,
+        barcodeValue: g.barcodeValue,
+        barcodeType: g.barcodeType,
+        printQty: g.printQty,
+        generatedBy,
+      })),
+    });
+
+    const row = await tx.barcodeLabelBatch.update({
+      where: { id },
+      data: { status: 'printed', printedOn: new Date() },
+      include: { items: true },
+    });
+
+    return { batch: row, generated };
+  });
+}
+
+/**
+ * Powers the "Barcode History" tab — every barcode value ever actually
+ * generated for print, across every batch, newest first. A plain append-
+ * only log (see the BarcodeGenerationLog model comment in schema.prisma),
+ * so unlike listBarcodeLabelBatches this never changes retroactively when a
+ * batch is later edited or deleted.
+ */
+export async function listBarcodeGenerationHistory(tenantId, { search, batchId } = {}) {
+  const where = { tenantId };
+  if (batchId) where.batchId = batchId;
+  if (search) {
+    const q = String(search);
+    where.OR = [
+      { itemCode: { contains: q, mode: 'insensitive' } },
+      { itemName: { contains: q, mode: 'insensitive' } },
+      { barcodeValue: { contains: q, mode: 'insensitive' } },
+      { batchCode: { contains: q, mode: 'insensitive' } },
+    ];
+  }
+  return prisma.barcodeGenerationLog.findMany({ where, orderBy: { createdAt: 'desc' }, take: HISTORY_TAKE });
 }

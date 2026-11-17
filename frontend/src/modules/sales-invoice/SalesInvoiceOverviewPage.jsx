@@ -24,11 +24,13 @@ import { toInvoiceRow, toInvoiceDetails, buildSummary } from './salesInvoiceDisp
  * detail panel for whichever row is selected, and a Terms & Conditions /
  * Notes strip below. Fully wired to the real backend (see
  * backend/src/modules/sales-invoice): every tile, row and detail field comes
- * from the actual SalesInvoice table, so a tenant with no invoices yet
- * honestly shows zeros/empty states instead of this page's old static mock
- * data. "Record Payment" stays a coming-soon placeholder — there is no
- * backend action yet that marks an invoice 'paid' (see salesInvoice.schema.js
- * comment), so it would be dishonest to pretend this button works.
+ * from the actual SalesInvoice table merged with this tenant's Line Sale
+ * (POS) bills (see salesInvoice.service.js's listSalesInvoices), so a tenant
+ * with neither yet honestly shows zeros/empty states instead of this page's
+ * old static mock data. "Record Payment" stays a coming-soon placeholder for
+ * a real SalesInvoice row — there is no backend action yet that marks one
+ * 'paid' (see salesInvoice.schema.js comment) — and is disabled outright for
+ * a Line Sale bill, which is already settled.
  */
 export default function SalesInvoiceOverviewPage({ tab, onTabChange, onCreate, onView, onEdit }) {
   const dispatch = useAppDispatch();
@@ -80,7 +82,13 @@ export default function SalesInvoiceOverviewPage({ tab, onTabChange, onCreate, o
           <Button variant="outlined" color="inherit" startIcon={<PrintOutlinedIcon fontSize="small" />} onClick={handlePrintPreview}>
             Print / Preview
           </Button>
-          <Button variant="outlined" color="inherit" startIcon={<PaymentsOutlinedIcon fontSize="small" />} onClick={handleRecordPayment} disabled={!invoiceDetails}>
+          <Button
+            variant="outlined"
+            color="inherit"
+            startIcon={<PaymentsOutlinedIcon fontSize="small" />}
+            onClick={handleRecordPayment}
+            disabled={!invoiceDetails || invoiceDetails.source === 'pos'}
+          >
             Record Payment
           </Button>
           <Button

@@ -17,8 +17,11 @@ import { toInvoiceDetails } from './salesInvoiceDisplay';
  * Overview/Status pages already show for the selected row. Rendered by
  * SalesInvoicePage via props (`id`/`onBack`/`onEdit`) as part of the single
  * /sales-invoice page rather than its own route. Fully wired to the real
- * backend — every field here comes from the actual SalesInvoice row fetched
- * by GET /api/sales-invoices/:id.
+ * backend — every field here comes from the actual SalesInvoice row (or, for
+ * a Line Sale bill shown here, its Linesales row) fetched by
+ * GET /api/sales-invoices/:id. A Line Sale bill (invoice.source === 'pos')
+ * has no "Edit Invoice" action — it's a settled POS transaction, not an
+ * editable Sales Invoice document.
  */
 export default function InvoiceViewPage({ id: propId, onBack, onEdit }) {
   const navigate = useNavigate();
@@ -65,9 +68,11 @@ export default function InvoiceViewPage({ id: propId, onBack, onEdit }) {
           <Button variant="outlined" color="inherit" startIcon={<ArrowBackOutlinedIcon fontSize="small" />} onClick={handleBack}>
             Back to Sales Invoice List
           </Button>
-          <Button variant="contained" onClick={handleEdit}>
-            Edit Invoice
-          </Button>
+          {invoice.source !== 'pos' && (
+            <Button variant="contained" onClick={handleEdit}>
+              Edit Invoice
+            </Button>
+          )}
         </Stack>
       </Stack>
 

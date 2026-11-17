@@ -127,6 +127,7 @@ export default function CreateBarcodeLabelPage({ id: propId, onBack }) {
     setValue('items.0.itemName', product.name);
     setValue('items.0.hsnCode', product.hsnSac || '');
     setValue('items.0.uom', product.uom || '');
+    setValue('items.0.barcode', product.barcode || '');
     setValue('items.0.printQty', '1.00');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedItemCode, productByCode]);

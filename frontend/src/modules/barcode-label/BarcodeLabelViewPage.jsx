@@ -5,10 +5,14 @@ import {
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import ArrowBackOutlinedIcon from '@mui/icons-material/ArrowBackOutlined';
+import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
 
+import { useAppDispatch } from '../../app/hooks';
+import { showToast } from '../../features/ui/uiSlice';
 import LabelDetailsCard from './components/LabelDetailsCard';
 import LabelTermsAndNotes from './components/LabelTermsAndNotes';
-import { useGetBarcodeLabelBatchQuery } from '../../api/barcodeLabelApi';
+import BarcodePrintDialog from './components/BarcodePrintDialog';
+import { useGetBarcodeLabelBatchQuery, useGenerateBarcodeLabelMutation } from '../../api/barcodeLabelApi';
 import { toBatchDetails } from './barcodeLabelDisplay';
 
 /**
@@ -21,15 +25,27 @@ import { toBatchDetails } from './barcodeLabelDisplay';
  * /api/barcode-labels/:id.
  */
 export default function BarcodeLabelViewPage({ id: propId, onBack, onEdit }) {
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { id: paramId } = useParams();
   const id = propId ?? paramId;
   const { data: row, isLoading, isError } = useGetBarcodeLabelBatchQuery(id, { skip: !id });
   const batch = row ? toBatchDetails(row) : null;
   const [notes, setNotes] = useState('');
+  const [printOpen, setPrintOpen] = useState(false);
+  const [generateBarcodes, { isLoading: isGenerating }] = useGenerateBarcodeLabelMutation();
 
   const handleBack = () => (onBack ? onBack() : navigate('/barcode-label'));
   const handleEdit = () => (onEdit ? onEdit() : navigate(`/barcode-label/edit/${id}`));
+  const handleGenerate = async () => {
+    if (!row) return;
+    try {
+      const result = await generateBarcodes(row.id).unwrap();
+      dispatch(showToast(`Barcodes generated for ${result.batch.code} and saved to history`, 'success'));
+    } catch (err) {
+      dispatch(showToast(err?.data?.message || 'Failed to generate barcodes', 'error'));
+    }
+  };
 
   if (isLoading) {
     return (
@@ -65,6 +81,9 @@ export default function BarcodeLabelViewPage({ id: propId, onBack, onEdit }) {
           <Button variant="outlined" color="inherit" startIcon={<ArrowBackOutlinedIcon fontSize="small" />} onClick={handleBack}>
             Back to Barcode &amp; Label List
           </Button>
+          <Button variant="outlined" color="inherit" startIcon={<PrintOutlinedIcon fontSize="small" />} onClick={() => setPrintOpen(true)}>
+            Print / Preview
+          </Button>
           <Button variant="contained" onClick={handleEdit}>
             Edit Batch
           </Button>
@@ -78,6 +97,14 @@ export default function BarcodeLabelViewPage({ id: propId, onBack, onEdit }) {
       </Grid>
 
       <LabelTermsAndNotes notes={notes} onNotesChange={setNotes} />
+
+      <BarcodePrintDialog
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        batch={row}
+        onGenerate={handleGenerate}
+        isGenerating={isGenerating}
+      />
     </Stack>
   );
 }

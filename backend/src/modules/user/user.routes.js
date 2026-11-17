@@ -4,6 +4,7 @@ import { prisma } from '../../config/prisma.js';
 import { ApiError } from '../../middleware/errorHandler.js';
 import { validateRequest } from '../../middleware/validateRequest.js';
 import { createUserSchema, updateUserSchema } from './user.schema.js';
+import { notSuperAdmin, isSuperAdminUsername } from '../../config/superAdmin.js';
 
 // Mounted behind authorize('user-management') in app.js.
 const router = Router();
@@ -50,7 +51,7 @@ function mapWriteError(err) {
 router.get('/', async (req, res, next) => {
   try {
     const rows = await prisma.user.findMany({
-      where: { tenantId: req.user.tenantId },
+      where: { tenantId: req.user.tenantId, ...notSuperAdmin },
       orderBy: { createdAt: 'desc' },
       include,
     });
@@ -62,6 +63,8 @@ router.get('/', async (req, res, next) => {
 router.post('/', validateRequest(createUserSchema), async (req, res, next) => {
   try {
     const { password, ...data } = req.body;
+    // The reserved super-admin username looks like any other taken username.
+    if (isSuperAdminUsername(data.username)) throw new ApiError(409, 'That username is already taken');
     await assertRoleBelongsToTenant(req.user.tenantId, data.roleId);
     await assertOutletsBelongToTenant(req.user.tenantId, data.outletIds);
     const user = await prisma.user.create({
@@ -79,10 +82,11 @@ router.post('/', validateRequest(createUserSchema), async (req, res, next) => {
 
 router.put('/:id', validateRequest(updateUserSchema), async (req, res, next) => {
   try {
-    const existing = await prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.user.tenantId } });
+    const existing = await prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.user.tenantId, ...notSuperAdmin } });
     if (!existing) throw new ApiError(404, 'User not found');
 
     const { password, ...data } = req.body;
+    if (data.username && isSuperAdminUsername(data.username)) throw new ApiError(409, 'That username is already taken');
     // An admin can't lock themselves out by changing their own role or
     // deactivating their own account.
     if (existing.id === req.user.id) {
@@ -115,7 +119,7 @@ router.put('/:id', validateRequest(updateUserSchema), async (req, res, next) => 
 // shifts, sales and audit columns.
 router.delete('/:id', async (req, res, next) => {
   try {
-    const existing = await prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.user.tenantId } });
+    const existing = await prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.user.tenantId, ...notSuperAdmin } });
     if (!existing) throw new ApiError(404, 'User not found');
     if (existing.id === req.user.id) throw new ApiError(400, 'You cannot deactivate your own account');
     const user = await prisma.user.update({

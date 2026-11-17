@@ -1,6 +1,8 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Box, IconButton, Tooltip } from '@mui/material';
+import {
+  Box, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button,
+} from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CloseIcon from '@mui/icons-material/Close';
@@ -9,7 +11,7 @@ import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import { useTranslation } from 'react-i18next';
 
 import { useAppDispatch, useAppSelector } from '../../app/hooks';
-import { selectOpenTabPaths, closeTab, closeAllTabs } from '../../features/tabs/tabsSlice';
+import { selectOpenTabPaths, selectDirtyTabPaths, closeTab, closeAllTabs } from '../../features/tabs/tabsSlice';
 import { getPageMeta, HOME_TAB_PATH } from './pageMeta';
 
 const SCROLL_STEP = 240;
@@ -22,6 +24,12 @@ const SCROLL_STEP = 240;
  * respects Settings > Tabs > "Max open tabs" (tabsSlice evicts the oldest
  * tab once that cap is hit) and "Close All Tabs" there calls the same
  * `closeAllTabs` action this bar's icon does.
+ *
+ * A tab whose page reported unsaved work (see hooks/useTabDirty.js —
+ * e.g. Sales Return or Line Sale with something on the cart) isn't closed
+ * immediately: closing it, or "Close all", asks for confirmation first,
+ * since KeepAliveTabContent keeping pages mounted means that work really
+ * is still sitting there until the tab is actually closed.
  */
 export default function TabBar() {
   const { t } = useTranslation();
@@ -29,14 +37,17 @@ export default function TabBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const openPaths = useAppSelector(selectOpenTabPaths);
+  const dirtyPaths = useAppSelector(selectDirtyTabPaths);
   const scrollerRef = useRef(null);
+  // Either { type: 'one', path } or { type: 'all' }, or null when no
+  // confirmation is pending.
+  const [pendingClose, setPendingClose] = useState(null);
 
   const handleScroll = (dir) => {
     scrollerRef.current?.scrollBy({ left: dir * SCROLL_STEP, behavior: 'smooth' });
   };
 
-  const handleClose = (e, path) => {
-    e.stopPropagation();
+  const closeOneTab = (path) => {
     const wasActive = location.pathname === path;
     dispatch(closeTab(path));
     if (wasActive) {
@@ -45,9 +56,32 @@ export default function TabBar() {
     }
   };
 
+  const handleClose = (e, path) => {
+    e.stopPropagation();
+    if (dirtyPaths.includes(path)) {
+      setPendingClose({ type: 'one', path });
+      return;
+    }
+    closeOneTab(path);
+  };
+
   const handleCloseAll = () => {
+    if (dirtyPaths.length > 0) {
+      setPendingClose({ type: 'all' });
+      return;
+    }
     dispatch(closeAllTabs());
     if (location.pathname !== HOME_TAB_PATH) navigate(HOME_TAB_PATH);
+  };
+
+  const handleConfirmClose = () => {
+    if (pendingClose?.type === 'one') {
+      closeOneTab(pendingClose.path);
+    } else if (pendingClose?.type === 'all') {
+      dispatch(closeAllTabs());
+      if (location.pathname !== HOME_TAB_PATH) navigate(HOME_TAB_PATH);
+    }
+    setPendingClose(null);
   };
 
   return (
@@ -81,6 +115,7 @@ export default function TabBar() {
           const { label, icon: Icon } = getPageMeta(path, t);
           const active = location.pathname === path;
           const pinned = path === HOME_TAB_PATH;
+          const dirty = dirtyPaths.includes(path);
 
           return (
             <Box
@@ -106,6 +141,14 @@ export default function TabBar() {
             >
               <Icon sx={{ fontSize: 17 }} />
               {label}
+              {dirty && (
+                <Tooltip title="Unsaved changes">
+                  <Box
+                    component="span"
+                    sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'warning.main', flexShrink: 0 }}
+                  />
+                </Tooltip>
+              )}
               {!pinned && (
                 <Box
                   component="span"
@@ -142,6 +185,24 @@ export default function TabBar() {
         </IconButton>
       </Tooltip>
 
+      <Dialog open={Boolean(pendingClose)} onClose={() => setPendingClose(null)}>
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          {pendingClose?.type === 'all' ? 'Close all tabs?' : 'Close this tab?'}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {pendingClose?.type === 'all'
+              ? `${dirtyPaths.length} open tab${dirtyPaths.length === 1 ? ' has' : 's have'} unsaved changes. Closing all tabs will discard ${dirtyPaths.length === 1 ? 'it' : 'them'}.`
+              : 'This tab has unsaved changes. Closing it will discard them.'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setPendingClose(null)}>Keep editing</Button>
+          <Button color="error" variant="contained" onClick={handleConfirmClose}>
+            {pendingClose?.type === 'all' ? 'Close all tabs' : 'Close tab'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

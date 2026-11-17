@@ -14,6 +14,7 @@ import CardGiftcardOutlinedIcon from '@mui/icons-material/CardGiftcardOutlined';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import LocalPrintshopOutlinedIcon from '@mui/icons-material/LocalPrintshopOutlined';
 import AutorenewOutlinedIcon from '@mui/icons-material/AutorenewOutlined';
+import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined';
 
 import { useAppDispatch } from '../../app/hooks';
 import { showToast } from '../../features/ui/uiSlice';
@@ -23,7 +24,10 @@ import { formatNumber } from '../../utils/format';
 import BarcodeLabelTable from './components/BarcodeLabelTable';
 import LabelDetailsCard from './components/LabelDetailsCard';
 import LabelTermsAndNotes from './components/LabelTermsAndNotes';
-import { useGetBarcodeLabelBatchesQuery, useBarcodeLabelStatusSummaryQuery } from '../../api/barcodeLabelApi';
+import BarcodePrintDialog from './components/BarcodePrintDialog';
+import {
+  useGetBarcodeLabelBatchesQuery, useBarcodeLabelStatusSummaryQuery, useGenerateBarcodeLabelMutation,
+} from '../../api/barcodeLabelApi';
 import { toBatchRow, toBatchDetails, buildStatusStats } from './barcodeLabelDisplay';
 
 const STATUS_META = {
@@ -73,9 +77,11 @@ export default function BarcodeLabelStatusPage({ status, tab, onTabChange, onCre
   const [moreActionsAnchor, setMoreActionsAnchor] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [notes, setNotes] = useState('');
+  const [printOpen, setPrintOpen] = useState(false);
 
   const { data: batches = [] } = useGetBarcodeLabelBatchesQuery({});
   const { data: statusSummaryData } = useBarcodeLabelStatusSummaryQuery(status);
+  const [generateBarcodes, { isLoading: isGenerating }] = useGenerateBarcodeLabelMutation();
 
   const rows = useMemo(() => batches.map(toBatchRow), [batches]);
   const statusRows = useMemo(() => rows.filter((r) => r.status === status), [rows, status]);
@@ -92,7 +98,19 @@ export default function BarcodeLabelStatusPage({ status, tab, onTabChange, onCre
     if (label === 'Edit') return onEdit ? onEdit(row.id) : navigate(`/barcode-label/edit/${row.id}`);
     return dispatch(showToast(`${label} "${row.code}" is coming soon`, 'info'));
   };
-  const handlePrintPreview = () => dispatch(showToast('Print / Preview is coming soon', 'info'));
+  const handlePrintPreview = () => {
+    if (!selectedBatch) return dispatch(showToast('Select a batch to preview first', 'info'));
+    setPrintOpen(true);
+  };
+  const handleGenerate = async () => {
+    if (!selectedBatch) return;
+    try {
+      const result = await generateBarcodes(selectedBatch.id).unwrap();
+      dispatch(showToast(`Barcodes generated for ${result.batch.code} and saved to history`, 'success'));
+    } catch (err) {
+      dispatch(showToast(err?.data?.message || 'Failed to generate barcodes', 'error'));
+    }
+  };
   const handleCreate = () => {
     if (onCreate) onCreate(); else navigate('/barcode-label/create');
   };
@@ -127,6 +145,9 @@ export default function BarcodeLabelStatusPage({ status, tab, onTabChange, onCre
         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', width: { xs: '100%', lg: 'auto' } }}>
           <Button variant="outlined" color="inherit" startIcon={<PrintOutlinedIcon fontSize="small" />} onClick={handlePrintPreview}>
             Print / Preview
+          </Button>
+          <Button variant="outlined" color="inherit" startIcon={<HistoryOutlinedIcon fontSize="small" />} onClick={() => onTabChange && onTabChange('history')}>
+            Barcode History
           </Button>
           <Button
             variant="outlined"
@@ -186,6 +207,14 @@ export default function BarcodeLabelStatusPage({ status, tab, onTabChange, onCre
       </Grid>
 
       <LabelTermsAndNotes notes={notes} onNotesChange={setNotes} />
+
+      <BarcodePrintDialog
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        batch={selectedBatch}
+        onGenerate={handleGenerate}
+        isGenerating={isGenerating}
+      />
     </Stack>
   );
 }

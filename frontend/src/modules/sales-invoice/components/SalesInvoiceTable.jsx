@@ -24,15 +24,19 @@ const STATUS_LABEL = {
   draft: 'Draft', sent: 'Sent', paid: 'Paid', overdue: 'Overdue',
 };
 
-function RowActions({ onAction }) {
+// A Line Sale (POS) bill only ever offers "View" — it's a settled
+// transaction from the Line Sale screen, not an editable Sales Invoice
+// document, so Edit/Duplicate/Delete would be dishonest to offer.
+function RowActions({ isPos, onAction }) {
   const [anchor, setAnchor] = useState(null);
+  const labels = isPos ? ['View'] : ['View', 'Edit', 'Duplicate', 'Delete'];
   return (
     <>
       <IconButton size="small" onClick={(e) => setAnchor(e.currentTarget)}>
         <MoreVertOutlinedIcon fontSize="small" />
       </IconButton>
       <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
-        {['View', 'Edit', 'Duplicate', 'Delete'].map((label) => (
+        {labels.map((label) => (
           <MenuItem key={label} onClick={() => { setAnchor(null); onAction(label); }}>
             {label}
           </MenuItem>
@@ -92,14 +96,21 @@ export default function SalesInvoiceTable({
       key: 'code',
       label: 'Invoice No.',
       render: (row) => (
-        <Typography
-          variant="body2"
-          noWrap
-          sx={{ fontWeight: 600, color: row.id === selectedId ? 'primary.main' : 'text.primary', cursor: 'pointer' }}
-          onClick={() => onSelectInvoice(row)}
-        >
-          {row.code}
-        </Typography>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography
+            variant="body2"
+            noWrap
+            sx={{ fontWeight: 600, color: row.id === selectedId ? 'primary.main' : 'text.primary', cursor: 'pointer' }}
+            onClick={() => onSelectInvoice(row)}
+          >
+            {row.code}
+          </Typography>
+          {row.source === 'pos' && (
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', lineHeight: 1.4 }}>
+              Line Sale bill
+            </Typography>
+          )}
+        </Box>
       ),
     },
     { key: 'date', label: 'Date' },
@@ -108,7 +119,7 @@ export default function SalesInvoiceTable({
     ...(dueDateColumn ? [{ key: 'dueDate', label: 'Due Date' }] : []),
     ...(createdByColumn ? [{ key: 'createdBy', label: 'Created By' }] : []),
     ...(statusColumn ? [{ key: 'status', label: 'Status', render: (row) => <StatusBadge status={row.status} label={STATUS_LABEL[row.status]} /> }] : []),
-    { key: 'action', label: 'Action', align: 'right', render: (row) => <RowActions onAction={(label) => onRowAction(label, row)} /> },
+    { key: 'action', label: 'Action', align: 'right', render: (row) => <RowActions isPos={row.source === 'pos'} onAction={(label) => onRowAction(label, row)} /> },
   ];
 
   return (

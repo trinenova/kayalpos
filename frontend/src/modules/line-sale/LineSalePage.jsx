@@ -65,6 +65,7 @@ import { useGetProductLotsQuery } from "../../api/productLotApi";
 import { useGetTaxCodesQuery } from "../../api/taxCodeApi";
 import { fifoAveragePrice, groupLotsByProduct } from "./fifoPricing";
 import { unitsForProduct, unitOf, stepFor, normalizeQty, round3 } from "./uomRules";
+import { useTabDirty } from "../../hooks/useTabDirty";
 
 // The product's own barcode row for a scanned barcode string (null when the
 // barcode isn't one of the product's barcodes).
@@ -272,6 +273,14 @@ export default function LineSalePage() {
   const { data: lotRows = [] } = useGetProductLotsQuery();
   const lotsByProduct = useMemo(() => groupLotsByProduct(lotRows), [lotRows]);
   const [rawCart, setCart] = useState([]);
+
+  // Reported to the tab strip (see TabBar.jsx / hooks/useTabDirty.js) so
+  // closing this tab while a sale is in progress — items on the bill but
+  // not yet paid or held — asks for confirmation first, instead of
+  // silently losing the cart. A held bill (see holdBill below) is a
+  // deliberate save, so the cart is empty again by the time that happens
+  // and this naturally clears itself.
+  useTabDirty(rawCart.length > 0);
   // `rawCart` holds each line as the cashier entered it (qty in the chosen UOM:
   // 2 Kg, 6 Nos). `cart` is that re-expressed in the product's master
   // UOM (0.5 Kg) because the price is per base unit — so qty x price, totals,

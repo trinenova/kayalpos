@@ -4,6 +4,7 @@ import BarcodeLabelOverviewPage from './BarcodeLabelOverviewPage';
 import BarcodeLabelStatusPage from './BarcodeLabelStatusPage';
 import CreateBarcodeLabelPage from './CreateBarcodeLabelPage';
 import BarcodeLabelViewPage from './BarcodeLabelViewPage';
+import BarcodeHistoryPage from './BarcodeHistoryPage';
 
 /**
  * Landing page for the sidebar's Barcode & Label item — a single page that
@@ -46,6 +47,10 @@ export default function BarcodeLabelPage() {
 
   if (tab === 'view') {
     return <BarcodeLabelViewPage id={activeId} onBack={goToList} onEdit={() => openEdit(activeId)} />;
+  }
+
+  if (tab === 'history') {
+    return <BarcodeHistoryPage onBack={goToList} />;
   }
 
   if (tab === 'all') {
