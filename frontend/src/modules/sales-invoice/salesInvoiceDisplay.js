@@ -27,6 +27,15 @@ export function statusLabel(status) {
   return STATUS_LABEL[status] || status;
 }
 
+/** True when `row` (an API row, or a toInvoiceRow/toInvoiceDetails shape)
+ * came from a Line Sale bill rather than a real SalesInvoice — see
+ * backend/src/modules/sale/sale.service.js's listLineSaleBillsAsInvoices.
+ * Edit/Duplicate/Delete never apply to one of these: it's a settled POS
+ * transaction, not an editable document. */
+export function isPosInvoiceRow(row) {
+  return row?.source === 'pos';
+}
+
 /** Row shape for SalesInvoiceTable. */
 export function toInvoiceRow(row) {
   return {
@@ -38,6 +47,7 @@ export function toInvoiceRow(row) {
     dueDate: row.dueDate ? formatDate(row.dueDate) : '-',
     status: row.status,
     createdBy: row.createdBy,
+    source: row.source || 'invoice',
   };
 }
 
@@ -47,6 +57,7 @@ export function toInvoiceDetails(row) {
   const cgstRate = 2.5;
   return {
     id: row.id,
+    source: row.source || 'invoice',
     code: row.code,
     date: formatDate(row.invoiceDate),
     ref: row.salesOrderRef || row.quotationRef || '-',

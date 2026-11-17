@@ -1,5 +1,8 @@
 import { prisma } from '../../config/prisma.js';
 import { ApiError } from '../../middleware/errorHandler.js';
+import {
+  listLineSaleBillsAsInvoices, getLineSaleBillAsInvoice, parsePosInvoiceId,
+} from '../sale/sale.service.js';
 
 const CODE_PREFIX = 'INV';
 const CODE_LENGTH = 5;
@@ -96,6 +99,14 @@ function itemCreateData(item) {
   };
 }
 
+/**
+ * Real SalesInvoice rows PLUS every Line Sale (POS) bill, merged into one
+ * list and sorted by date — see sale.service.js's
+ * listLineSaleBillsAsInvoices for how a Linesales/TczOpos bill is shaped to
+ * fit this same row contract. A Line Sale bill always reads as 'paid' (it
+ * settles immediately at checkout), so it naturally falls into the Paid
+ * tab/status filter below alongside any real invoice marked paid.
+ */
 export async function listSalesInvoices(tenantId, { status, search } = {}) {
   const where = { tenantId };
   if (search) {
@@ -106,13 +117,17 @@ export async function listSalesInvoices(tenantId, { status, search } = {}) {
     ];
   }
 
-  const rows = await prisma.salesInvoice.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    include: { items: true },
-    take: 1000,
-  });
-  const shaped = rows.map(toApiShape);
+  const [rows, posRows] = await Promise.all([
+    prisma.salesInvoice.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: { items: true },
+      take: 1000,
+    }),
+    listLineSaleBillsAsInvoices(tenantId, { search }),
+  ]);
+  const shaped = [...rows.map(toApiShape), ...posRows]
+    .sort((a, b) => new Date(b.invoiceDate) - new Date(a.invoiceDate));
 
   // Status filtering happens after the live computation above (not in the
   // Prisma `where`), since 'overdue' isn't a real column — see computeStatus().
@@ -123,6 +138,12 @@ export async function listSalesInvoices(tenantId, { status, search } = {}) {
 }
 
 export async function getSalesInvoice(tenantId, id) {
+  const posDocEntry = parsePosInvoiceId(id);
+  if (posDocEntry !== null) {
+    const row = await getLineSaleBillAsInvoice(tenantId, posDocEntry);
+    if (!row) throw new ApiError(404, 'Sales invoice not found');
+    return row;
+  }
   const row = await prisma.salesInvoice.findFirst({ where: { id, tenantId }, include: { items: true } });
   if (!row) throw new ApiError(404, 'Sales invoice not found');
   return toApiShape(row);
@@ -183,6 +204,7 @@ export async function createSalesInvoice(tenantId, data, actor) {
 // as a parameter so the route can pass req.user uniformly with create's
 // signature and it's ready if that's added later.
 export async function updateSalesInvoice(tenantId, id, data, actor) { // eslint-disable-line no-unused-vars
+  if (parsePosInvoiceId(id) !== null) throw new ApiError(400, 'A Line Sale bill cannot be edited as a Sales Invoice');
   return prisma.$transaction(async (tx) => {
     const existing = await tx.salesInvoice.findFirst({ where: { id, tenantId } });
     if (!existing) throw new ApiError(404, 'Sales invoice not found');
@@ -225,6 +247,7 @@ export async function updateSalesInvoice(tenantId, id, data, actor) { // eslint-
 }
 
 export async function deleteSalesInvoice(tenantId, id) {
+  if (parsePosInvoiceId(id) !== null) throw new ApiError(400, 'A Line Sale bill cannot be deleted from Sales Invoice');
   const existing = await prisma.salesInvoice.findFirst({ where: { id, tenantId } });
   if (!existing) throw new ApiError(404, 'Sales invoice not found');
   await prisma.salesInvoice.delete({ where: { id } });
@@ -233,15 +256,22 @@ export async function deleteSalesInvoice(tenantId, id) {
 
 /**
  * Powers the Sales Invoice page's top 5-tile summary strip — every figure
- * here is a real aggregate across this tenant's actual SalesInvoice rows,
- * computed at request time (never a stored/cached counter that could drift).
+ * here is a real aggregate across this tenant's actual SalesInvoice rows
+ * PLUS its Line Sale bills (see listSalesInvoices), computed at request time
+ * (never a stored/cached counter that could drift).
  */
 export async function getSalesInvoiceSummary(tenantId) {
-  const rows = await prisma.salesInvoice.findMany({
-    where: { tenantId },
-    select: { status: true, dueDate: true, grandTotal: true },
-  });
-  const shaped = rows.map((row) => ({ ...row, status: computeStatus(row) }));
+  const [rows, posRows] = await Promise.all([
+    prisma.salesInvoice.findMany({
+      where: { tenantId },
+      select: { status: true, dueDate: true, grandTotal: true },
+    }),
+    listLineSaleBillsAsInvoices(tenantId),
+  ]);
+  const shaped = [
+    ...rows.map((row) => ({ ...row, status: computeStatus(row) })),
+    ...posRows.map((row) => ({ status: row.status, grandTotal: row.grandTotal })),
+  ];
 
   const totalAmount = shaped.reduce((sum, row) => sum + Number(row.grandTotal), 0);
   const countByStatus = (status) => shaped.filter((row) => row.status === status).length;
@@ -259,19 +289,24 @@ export async function getSalesInvoiceSummary(tenantId) {
  * Powers the Draft/Sent/Paid/Overdue status pages' 4-tile strip (count +
  * three real aggregates) for one status at a time — count, total invoice
  * value, average invoice value, and total line items across that status's
- * invoices. All computed from real rows; a status with zero invoices
- * (currently true of 'paid' — see the SalesInvoice model comment on why
- * nothing sets it yet) honestly returns zeros rather than any placeholder
- * figure.
+ * invoices and (for 'paid') Line Sale bills. All computed from real rows; a
+ * status with nothing in it honestly returns zeros rather than any
+ * placeholder figure. No real SalesInvoice row sets status 'paid' yet (see
+ * the SalesInvoice model comment) — so today the Paid tab's figures come
+ * entirely from Line Sale bills, which is accurate, not a bug.
  */
 export async function getSalesInvoiceStatusSummary(tenantId, status) {
-  const rows = await prisma.salesInvoice.findMany({
-    where: { tenantId },
-    include: { items: true },
-  });
-  const shaped = rows
-    .map((row) => ({ ...row, status: computeStatus(row) }))
-    .filter((row) => row.status === status);
+  const [rows, posRows] = await Promise.all([
+    prisma.salesInvoice.findMany({
+      where: { tenantId },
+      include: { items: true },
+    }),
+    listLineSaleBillsAsInvoices(tenantId),
+  ]);
+  const shaped = [
+    ...rows.map((row) => ({ ...row, status: computeStatus(row) })),
+    ...posRows,
+  ].filter((row) => row.status === status);
 
   const count = shaped.length;
   const totalAmount = shaped.reduce((sum, row) => sum + Number(row.grandTotal), 0);

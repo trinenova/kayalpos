@@ -29,6 +29,122 @@ export async function nextBillNo(tenantId) {
   return `LS-${String(count + 1).padStart(5, '0')}`;
 }
 
+// ---------------------------------------------------------------------------
+// Line Sale bills shaped as Sales-Invoice-style rows, so the Sales Invoice
+// page's list can show them alongside real SalesInvoice rows (see
+// salesInvoice.service.js's listSalesInvoices/getSalesInvoice, which import
+// these). A Line Sale bill settles the instant it's rung up at checkout —
+// there's no draft/sent/due-date lifecycle for it — so it always reads as
+// status 'paid' here, never 'overdue'. `id` is prefixed "pos:" so it can
+// never collide with a real SalesInvoice's cuid, and so the Sales Invoice
+// routes can tell which table an id belongs to.
+// ---------------------------------------------------------------------------
+
+const POS_INVOICE_ID_PREFIX = 'pos:';
+
+export function posInvoiceIdOf(docEntry) {
+  return `${POS_INVOICE_ID_PREFIX}${docEntry}`;
+}
+
+/** "pos:123" -> 123n, anything else (including a real SalesInvoice cuid) -> null. */
+export function parsePosInvoiceId(id) {
+  const m = typeof id === 'string' ? /^pos:(\d{1,18})$/.exec(id) : null;
+  return m ? BigInt(m[1]) : null;
+}
+
+/**
+ * One TczOpos (+ its lines) mapped to the field shape
+ * salesInvoiceDisplay.js's toInvoiceRow/toInvoiceDetails already expect from
+ * a SalesInvoice row. GST isn't split into SGST/CGST on a Line Sale bill the
+ * way it is on a Sales Invoice (it's one per-line `taxRate`/`taxValue`), so
+ * the bill's single total tax is shown split evenly across Sgst/Cgst here —
+ * an honest display convention, not a real stored split.
+ */
+function toInvoiceLikeRow(bill) {
+  const taxAmount = Number(bill.taxAmount || 0);
+  const halfTax = Math.round((taxAmount / 2) * 100) / 100;
+  return {
+    id: posInvoiceIdOf(bill.docEntry),
+    source: 'pos',
+    code: bill.docNum,
+    customerId: bill.customerId,
+    customerName: bill.customerName || 'Walk-in Customer',
+    contactPerson: '',
+    mobile: bill.customerMobileNumber || '',
+    email: '',
+    address: '',
+    invoiceDate: bill.createDate,
+    dueDate: null,
+    salesOrderRef: '',
+    quotationRef: '',
+    salesPerson: bill.createdBy || '-',
+    currency: 'INR',
+    paymentTerms: '-',
+    priceList: null,
+    deliveryDate: null,
+    referenceNo: '',
+    remarks: '',
+    notes: '',
+    extraDiscount: Number(bill.headerDiscount || 0),
+    subTotal: Number(bill.subTotal || 0),
+    discountAmount: Number(bill.discountAmount || 0),
+    taxableAmount: Number(bill.taxableValueTotal || 0),
+    sgstAmount: halfTax,
+    cgstAmount: halfTax,
+    grandTotal: Number(bill.grandTotal || 0),
+    status: 'paid',
+    dbStatus: 'paid',
+    createdBy: bill.createdBy || '-',
+    paidOn: bill.createDate,
+    items: (bill.lines || []).map((line) => ({
+      itemCode: line.itemCode || '',
+      itemName: line.itemName || '',
+      hsnCode: null,
+      qty: Number(line.quantity || 0),
+      unit: line.uom || '',
+      unitPrice: Number(line.price || 0),
+      discountPercent: 0,
+      discountAmount: 0,
+      taxCode: line.taxCode || null,
+      amount: Number(line.lineTotal || 0),
+    })),
+  };
+}
+
+/**
+ * Every Line Sale bill of this tenant (all outlets — the Sales Invoice page
+ * is a tenant-wide document list, not scoped to one cashier/outlet the way
+ * the Line Sale screen's own "Recent Sales" popup is), shaped for the Sales
+ * Invoice list.
+ */
+export async function listLineSaleBillsAsInvoices(tenantId, { search } = {}) {
+  const where = { tenantId };
+  if (search) {
+    const q = String(search);
+    where.OR = [
+      { docNum: { contains: q, mode: 'insensitive' } },
+      { customerName: { contains: q, mode: 'insensitive' } },
+    ];
+  }
+  const bills = await prisma.tczOpos.findMany({
+    where,
+    orderBy: { createDate: 'desc' },
+    include: { lines: { orderBy: { lineId: 'asc' } } },
+    take: 1000,
+  });
+  return bills.map(toInvoiceLikeRow);
+}
+
+/** One Line Sale bill by its "pos:<docEntry>" id, shaped for the Sales Invoice
+ * view — or null if no such bill exists for this tenant. */
+export async function getLineSaleBillAsInvoice(tenantId, docEntry) {
+  const bill = await prisma.tczOpos.findFirst({
+    where: { tenantId, docEntry },
+    include: { lines: { orderBy: { lineId: 'asc' } } },
+  });
+  return bill ? toInvoiceLikeRow(bill) : null;
+}
+
 /**
  * Creates a sale: re-reads every Product fresh inside one transaction
  * (never trusts the client's cached price/name/stock), verifies stock,

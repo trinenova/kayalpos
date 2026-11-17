@@ -3,10 +3,15 @@ import path from 'node:path';
 import { prisma } from '../../config/prisma.js';
 import { ApiError } from '../../middleware/errorHandler.js';
 import { billIdOf, lineIdOf, parseBillId, parseLineId } from '../sale/tczIds.js';
-import { restoreToLot } from '../product-lot/productLot.service.js';
+import { restoreToLot, allocateFifoForSale, syncProductToHeadLot } from '../product-lot/productLot.service.js';
+import { loadTaxRateResolver } from '../sale/taxRates.js';
 
 function round2(n) {
   return Math.round(n * 100) / 100;
+}
+
+function round3(n) {
+  return Math.round(n * 1000) / 1000;
 }
 
 // Share of each line's value that was discounted on the original bill. The bill
@@ -123,6 +128,65 @@ export async function lookupOriginalInvoice(tenantId, billNo) {
   };
 }
 
+/**
+ * Resolves and FIFO-allocates the new goods for an 'exchange' return's
+ * `exchangeItems`, exactly the way createSale resolves a Line Sale cart:
+ * every Product is re-read fresh inside this same transaction (never
+ * trusted from the client), must be ACTIVE, and is priced from whichever
+ * purchase lot FIFO says is next — unless the cashier typed an explicit
+ * override price for that line, same convention as Line Sale's own
+ * per-line price override. Returns the frozen line snapshots
+ * (SalesReturnExchangeItem shape) plus the real product ids/qty wanted, so
+ * the caller can decrement stock the same way createSale does.
+ */
+async function resolveExchangeLines(tx, tenantId, exchangeItems) {
+  const productIds = [...new Set(exchangeItems.map((i) => i.productId))];
+  const products = await tx.product.findMany({ where: { id: { in: productIds }, tenantId } });
+  const productById = new Map(products.map((p) => [p.id, p]));
+
+  const lines = exchangeItems.map((item) => {
+    const product = productById.get(item.productId);
+    if (!product) throw new ApiError(400, 'One of the exchange items no longer exists');
+    if (product.status !== 'ACTIVE') throw new ApiError(400, `${product.name} is inactive and cannot be given in exchange`);
+    const qty = round3(Number(item.qty));
+    if (qty <= 0) throw new ApiError(400, `Quantity for ${product.name} must be greater than 0`);
+    return { productId: product.id, qty, priceOverride: item.price != null ? Number(item.price) : null };
+  });
+
+  // Total qty wanted per product across every exchange line, BEFORE the FIFO
+  // split below — the same quantity the stock decrement afterwards uses,
+  // same "sum the request, not the post-split allocation" rule createSale
+  // follows for its own wantedQty.
+  const wantedQty = new Map();
+  lines.forEach((line) => wantedQty.set(line.productId, round3((wantedQty.get(line.productId) || 0) + line.qty)));
+
+  const allocations = await allocateFifoForSale(tx, tenantId, lines, productById);
+  const taxRateOf = await loadTaxRateResolver(tx, tenantId);
+
+  const lineData = [];
+  lines.forEach((line, index) => {
+    const product = productById.get(line.productId);
+    allocations[index].forEach((part) => {
+      const unitPrice = line.priceOverride != null ? line.priceOverride : part.price;
+      const amount = round2(unitPrice * part.qty);
+      lineData.push({
+        productId: product.id,
+        code: product.code,
+        name: product.name,
+        uom: product.uom || '',
+        qty: part.qty,
+        rate: unitPrice,
+        taxRate: taxRateOf(product),
+        amount,
+        lotId: part.lot?.id || null,
+        unitCost: part.cost,
+      });
+    });
+  });
+
+  return { lineData, wantedQty };
+}
+
 export async function createSalesReturn(tenantId, data, actor) {
   return prisma.$transaction(async (tx) => {
     const docEntry = parseBillId(data.saleId);
@@ -170,6 +234,45 @@ export async function createSalesReturn(tenantId, data, actor) {
     }, 0));
     const grandTotal = round2(subTotal - discountAmount);
 
+    const returnType = data.returnType || 'return';
+
+    // Only populated for an 'exchange' — a plain 'return' writes zeros for
+    // all of these (see the SalesReturn model comment), which is the
+    // honest value: there is no exchange side to total.
+    let exchangeLineData = [];
+    let exchangeWantedQty = new Map();
+    let exchangeSubTotal = 0;
+    let exchangeTaxAmount = 0;
+    let exchangeGrandTotal = 0;
+    let balanceAmount = 0;
+    let settlementMode = null;
+
+    if (returnType === 'exchange') {
+      const resolved = await resolveExchangeLines(tx, tenantId, data.exchangeItems);
+      exchangeLineData = resolved.lineData;
+      exchangeWantedQty = resolved.wantedQty;
+
+      exchangeSubTotal = round2(exchangeLineData.reduce((sum, line) => sum + line.amount, 0));
+      exchangeTaxAmount = round2(exchangeLineData.reduce((sum, line) => {
+        const gross = line.amount;
+        return sum + (gross - gross / (1 + Number(line.taxRate)));
+      }, 0));
+      // The new goods carry no bill-level discount of their own (a fresh
+      // exchange pick, not a re-discounted original sale), so grand total
+      // is simply the sum of its GST-inclusive line amounts.
+      exchangeGrandTotal = exchangeSubTotal;
+      balanceAmount = round2(exchangeGrandTotal - grandTotal);
+
+      if (balanceAmount !== 0) {
+        if (!data.settlementMode) {
+          throw new ApiError(400, balanceAmount > 0
+            ? 'Select how the customer is paying the extra amount'
+            : 'Select how the refund for the price difference is being given');
+        }
+        settlementMode = data.settlementMode;
+      }
+    }
+
     const returnNo = await nextReturnNoWithin(tx, tenantId);
 
     const row = await tx.salesReturn.create({
@@ -182,15 +285,22 @@ export async function createSalesReturn(tenantId, data, actor) {
         cashierName: actor?.name || 'Admin',
         reason: data.reason,
         note: data.note || null,
-        refundMode: data.refundMode,
-        refundTo: data.refundMode === 'refund' ? data.refundTo : null,
+        returnType,
+        refundMode: returnType === 'return' ? data.refundMode : null,
+        refundTo: returnType === 'return' && data.refundMode === 'refund' ? data.refundTo : null,
+        settlementMode,
         subTotal,
         discountAmount,
         taxAmount,
         grandTotal,
+        exchangeSubTotal,
+        exchangeTaxAmount,
+        exchangeGrandTotal,
+        balanceAmount,
         items: { create: lineData },
+        exchangeItems: { create: exchangeLineData },
       },
-      include: { items: true },
+      include: { items: true, exchangeItems: true },
     });
 
     // Reverses createSale's decrement — the returned goods physically come
@@ -207,13 +317,30 @@ export async function createSalesReturn(tenantId, data, actor) {
       await restoreToLot(tx, tenantId, soldLine.get(`${line.docEntry}-${line.lineId}`)?.lotId, line.qty);
     }
 
+    // The new goods leave stock exactly like a Line Sale: an unconditional
+    // decrement (no stock validation — same "a bill goes through even at 0
+    // stock" rule createSale follows), products touched in a fixed order so
+    // two concurrent transactions can't deadlock each other, then the
+    // product's displayed price/MRP is pointed at whichever lot is next.
+    const exchangeDecrements = [...exchangeWantedQty.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    for (const [productId, qty] of exchangeDecrements) {
+      // eslint-disable-next-line no-await-in-loop
+      await tx.product.updateMany({ where: { id: productId, tenantId }, data: { availableQty: { decrement: qty } } });
+    }
+    for (const productId of exchangeWantedQty.keys()) {
+      // eslint-disable-next-line no-await-in-loop
+      await syncProductToHeadLot(tx, tenantId, productId);
+    }
+
     return toReturnDto(row);
-  });
+  }, { maxWait: 10_000, timeout: 20_000 });
 }
 
 // API shape: the original bill / line are exposed as the same string ids the
 // lookup hands out (bill = "<DocEntry>", line = "<DocEntry>-<LineId>"); the raw
-// bigint DocEntry must not reach JSON.
+// bigint DocEntry must not reach JSON. Exchange items have no original-bill
+// line to translate (they're a fresh Product pick, not a SaleLine), so they
+// pass through unchanged.
 function toReturnDto(row) {
   const { docEntry, items, ...rest } = row;
   return {

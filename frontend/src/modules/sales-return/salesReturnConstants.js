@@ -19,3 +19,24 @@ export const REFUND_PAYMENT_METHODS = [
   { value: 'card', label: 'Card' },
   { value: 'store-credit', label: 'Store Credit' },
 ];
+
+// The two things a cashier can do with goods coming back, picked once at
+// the top of the Scan/Search Item card. 'return' hands money back to the
+// customer (Refund To, below); 'exchange' hands back different goods
+// instead, settling any price difference (see ExchangeCartPanel/
+// SettlementCard) rather than touching cash for the returned items at all.
+export const RETURN_TYPES = [
+  { value: 'return', label: 'Return' },
+  { value: 'exchange', label: 'Exchange' },
+];
+
+// Where the price difference on an exchange is settled when the new goods
+// cost MORE than the returned ones — the customer is paying extra, so
+// "Store Credit" (which only makes sense as a way to pay OUT, not collect)
+// is left out here. Used for the "Collect Via" select.
+export const SETTLEMENT_COLLECT_METHODS = REFUND_PAYMENT_METHODS.filter((m) => m.value !== 'store-credit');
+
+// Where the price difference on an exchange is settled when the new goods
+// cost LESS — the customer is owed a refund, same option set as a plain
+// return's "Refund To".
+export const SETTLEMENT_REFUND_METHODS = REFUND_PAYMENT_METHODS;

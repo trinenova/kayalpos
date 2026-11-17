@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Box, Typography, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import Sidebar, { SIDEBAR_WIDTH, SIDEBAR_RAIL_WIDTH } from './Sidebar';
 import Topbar from './Topbar';
 import TabBar from './TabBar';
+import KeepAliveTabContent from './KeepAliveTabContent';
 import { useAppDispatch, useAppSelector } from '../../app/hooks';
 import { selectSidebarOpen, toggleSidebar, selectMaxOpenTabs, showToast } from '../../features/ui/uiSlice';
 import { openTab, selectOpenTabPaths } from '../../features/tabs/tabsSlice';
@@ -12,12 +13,18 @@ import { useAccessSync } from '../../hooks/useAccessSync';
 import AccessGate from '../common/AccessGate';
 
 /**
- * Shared shell for every authenticated page: Sidebar + Topbar + content
- * outlet. Below `md` the sidebar becomes a temporary overlay drawer (closed
- * by default, opened via the topbar menu button — purely local UI state);
- * at/above `md` it's a permanent rail that can collapse to icons-only
- * (that collapsed/expanded state is the one thing worth sharing globally,
- * hence it lives in the ui redux slice).
+ * Shared shell for every authenticated page: Sidebar + Topbar + TabBar +
+ * content area. Below `md` the sidebar becomes a temporary overlay drawer
+ * (closed by default, opened via the topbar menu button — purely local UI
+ * state); at/above `md` it's a permanent rail that can collapse to
+ * icons-only (that collapsed/expanded state is the one thing worth sharing
+ * globally, hence it lives in the ui redux slice).
+ *
+ * The content area is KeepAliveTabContent, not a plain `<Outlet/>` — see
+ * its own doc comment for why: a bare Outlet unmounts/remounts a page on
+ * every tab switch, which used to wipe out whatever the user was in the
+ * middle of (a return's cart, a sale in progress, ...) just from switching
+ * tabs and back.
  */
 export default function AppShell() {
   const theme = useTheme();
@@ -79,7 +86,7 @@ export default function AppShell() {
           <TabBar />
         </Box>
         <Box component="main" sx={{ flex: 1, p: { xs: 1.5, sm: 2, md: 3 } }}>
-          <AccessGate><Outlet /></AccessGate>
+          <AccessGate><KeepAliveTabContent /></AccessGate>
         </Box>
         <Footer />
       </Box>

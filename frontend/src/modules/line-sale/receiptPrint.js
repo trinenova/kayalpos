@@ -292,7 +292,13 @@ export function printReceipt(data) {
 export function buildReturnReceiptHtml({
   company, returnNo, originalInvoiceNo, invoiceDate, dateTime, cashierName, customerName,
   reasonLabel, lines, totals, refundMode, refundToLabel, isPreview,
+  // Only set for an exchange (returnType === 'exchange'): the new goods the
+  // customer took instead of a refund, their own totals, and how the price
+  // difference (if any) was settled. Omitted entirely for a plain return,
+  // which prints exactly as it always has.
+  returnType, exchangeLines, exchangeTotals, balanceAmount, settlementModeLabel,
 }) {
+  const isExchange = returnType === 'exchange';
   const totalQty = Math.round(lines.reduce((sum, line) => sum + line.qty, 0) * 1000) / 1000;
   const roundedTotal = Math.round(totals.grandTotal);
   const roundOff = round2(roundedTotal - totals.grandTotal);
@@ -304,6 +310,23 @@ export function buildReturnReceiptHtml({
       <td class="num">${money(line.rate)}</td>
       <td class="num">${money(line.qty * line.rate)}</td>
     </tr>`).join('');
+
+  const exchangeItemRows = (exchangeLines || []).map((line) => `
+    <tr>
+      <td>${esc(line.name)}</td>
+      <td class="num">${line.qty}</td>
+      <td class="num">${money(line.rate)}</td>
+      <td class="num">${money(line.qty * line.rate)}</td>
+    </tr>`).join('');
+
+  // Positive = the customer paid this much more for the new goods; negative
+  // = this much was refunded back; zero = an even swap, nothing to settle.
+  const balance = round2(balanceAmount || 0);
+  const balanceLine = balance === 0
+    ? 'Even exchange — no balance due'
+    : balance > 0
+      ? `Customer Paid (${esc(settlementModeLabel || '-')}): ${money(balance)}`
+      : `Refunded to Customer (${esc(settlementModeLabel || '-')}): ${money(Math.abs(balance))}`;
 
   const taxGroups = new Map();
   lines.forEach((line) => {
@@ -366,7 +389,7 @@ ${buildAddressHtml(company)}
   <div class="kvbox">${company?.gstin ? `<div class="kv"><span>GSTIN</span><span>:</span><span>${esc(company.gstin)}</span></div>` : ''}</div>
 
   <div class="divider"></div>
-  <div class="center bold">SALES RETURN${isPreview ? ' (PREVIEW)' : ''}</div>
+  <div class="center bold">SALES RETURN${isExchange ? ' / EXCHANGE' : ''}${isPreview ? ' (PREVIEW)' : ''}</div>
   <div class="row"><span>Return No: ${esc(returnNo)}</span></div>
   <div class="row"><span>Original Bill:</span><span>${esc(originalInvoiceNo)}</span></div>
   <div class="row"><span>Bill Date:</span><span>${esc(invoiceDate)}</span></div>
@@ -376,6 +399,7 @@ ${buildAddressHtml(company)}
   <div class="row"><span>Reason:</span><span>${esc(reasonLabel || '-')}</span></div>
   <div class="divider"></div>
 
+  <div class="center bold">${isExchange ? 'ITEMS RETURNED' : 'ITEMS'}</div>
   <table>
     <thead>
       <tr><th>Item Name</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Value</th></tr>
@@ -387,11 +411,28 @@ ${buildAddressHtml(company)}
   <div class="row"><span>Items: ${lines.length}  Qty: ${totalQty}</span><span>Rnd: ${money(roundOff)}</span></div>
   <div class="row"><span>Sub Total</span><span>${money(totals.subTotal)}</span></div>
   ${totals.tax > 0 ? `<div class="row"><span>GST (incl.)</span><span>${money(totals.tax)}</span></div>` : ''}
-  <div class="row bold"><span>Refund Total</span><span>${money(roundedTotal)}</span></div>
-  <div class="row"><span>${refundLine}</span></div>
+  <div class="row bold"><span>${isExchange ? 'Return Value' : 'Refund Total'}</span><span>${money(roundedTotal)}</span></div>
+  ${isExchange ? '' : `<div class="row"><span>${refundLine}</span></div>`}
+
+  ${isExchange ? `
+  <div class="divider"></div>
+  <div class="center bold">ITEMS TAKEN (EXCHANGE)</div>
+  <table>
+    <thead>
+      <tr><th>Item Name</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Value</th></tr>
+    </thead>
+    <tbody class="items">${exchangeItemRows}</tbody>
+  </table>
+  <div class="divider"></div>
+  <div class="row"><span>Sub Total</span><span>${money(exchangeTotals?.subTotal || 0)}</span></div>
+  ${exchangeTotals?.tax > 0 ? `<div class="row"><span>GST (incl.)</span><span>${money(exchangeTotals.tax)}</span></div>` : ''}
+  <div class="row bold"><span>Exchange Value</span><span>${money(exchangeTotals?.grandTotal || 0)}</span></div>
+  <div class="divider"></div>
+  <div class="row bold"><span>${balanceLine}</span></div>
+  ` : ''}
 
   ${taxRows ? '<div class="divider"></div>' : ''}
-  ${taxRows ? `<table>
+  ${taxRows ? `${isExchange ? '<div class="center">GST on returned items</div>' : ''}<table>
     <thead>
       <tr><th class="num">GST%</th><th class="num">Sale Amt</th><th class="num">GST</th><th class="num">CGST</th><th class="num">SGST</th></tr>
     </thead>

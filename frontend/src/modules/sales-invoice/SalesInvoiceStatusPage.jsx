@@ -138,7 +138,13 @@ export default function SalesInvoiceStatusPage({ status, tab, onTabChange, onCre
           <Button variant="outlined" color="inherit" startIcon={<PrintOutlinedIcon fontSize="small" />} onClick={handlePrintPreview}>
             Print / Preview
           </Button>
-          <Button variant="outlined" color="inherit" startIcon={<PaymentsOutlinedIcon fontSize="small" />} onClick={handleRecordPayment} disabled={!invoiceDetails}>
+          <Button
+            variant="outlined"
+            color="inherit"
+            startIcon={<PaymentsOutlinedIcon fontSize="small" />}
+            onClick={handleRecordPayment}
+            disabled={!invoiceDetails || invoiceDetails.source === 'pos'}
+          >
             Record Payment
           </Button>
           <Button

@@ -14,22 +14,27 @@ import {
   useNextSalesReturnNoQuery, useLazyLookupOriginalInvoiceQuery, useCreateSalesReturnMutation,
   useUploadSalesReturnEvidenceMutation,
 } from '../../api/salesReturnApi';
+import { useGetProductsQuery } from '../../api/productApi';
 import { useCompanyProfileQuery } from '../../api/companyApi';
 import { printReturnReceipt } from '../line-sale/receiptPrint';
+import { useTabDirty } from '../../hooks/useTabDirty';
 
 import ReturnItemsPanel from './components/ReturnItemsPanel';
 import ReturnCartPanel from './components/ReturnCartPanel';
+import ExchangeCartPanel from './components/ExchangeCartPanel';
 import ReturnInfoRow from './components/ReturnInfoRow';
 import ReturnReasonCard from './components/ReturnReasonCard';
-import RefundAdjustmentCard from './components/RefundAdjustmentCard';
 import ReturnTotalsCard from './components/ReturnTotalsCard';
 import OriginalInvoiceSummaryCard from './components/OriginalInvoiceSummaryCard';
 import RefundSummaryCard from './components/RefundSummaryCard';
+import ExchangeSummaryCard from './components/ExchangeSummaryCard';
 import PaymentMethodSummaryCard from './components/PaymentMethodSummaryCard';
 import ReturnActionsCard from './components/ReturnActionsCard';
 import FindInvoiceDialog from './components/FindInvoiceDialog';
 import EvidenceDialog from './components/EvidenceDialog';
-import { RETURN_REASONS, REFUND_PAYMENT_METHODS } from './salesReturnConstants';
+import {
+  RETURN_REASONS, REFUND_PAYMENT_METHODS, SETTLEMENT_COLLECT_METHODS, SETTLEMENT_REFUND_METHODS,
+} from './salesReturnConstants';
 
 const WALK_IN_CUSTOMER_NAME = 'Walk-in Customer';
 
@@ -41,16 +46,23 @@ function formatDate(value) {
   if (!value) return '-';
   return new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
 }
+function round2(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
 
 /**
- * Sales Return (POS refund) screen — find the original invoice, pick which
- * lines are coming back, capture why, and settle the refund. Fully wired to
- * the real backend (see backend/src/modules/sales-return): "Find Original
- * Invoice" looks up an actual Sale by its billNo, each returnable line's
- * remaining qty is computed from real prior returns (never fabricated),
- * and "Process Return" writes a real SalesReturn + SalesReturnItem rows,
- * validated again server-side (over-returning a line is rejected there even
- * if this page's own qty caps were somehow bypassed).
+ * Sales Return (POS refund/exchange) screen — find the original invoice,
+ * pick which lines are coming back, capture why, and either refund the
+ * customer (Return mode) or hand over new goods for the difference
+ * (Exchange mode). Fully wired to the real backend (see
+ * backend/src/modules/sales-return): "Find Original Invoice" looks up an
+ * actual Sale by its billNo, each returnable line's remaining qty is
+ * computed from real prior returns, exchanged-out goods are priced/taxed/
+ * stocked by the exact same FIFO + tax-resolver machinery a normal Line
+ * Sale uses, and "Process Return" writes a real SalesReturn row (plus
+ * SalesReturnItem / SalesReturnExchangeItem lines) — validated again
+ * server-side, so nothing this page allows can slip past the backend's own
+ * checks (over-returning a line, an unsettled exchange balance, ...).
  */
 export default function SalesReturnPage() {
   const dispatch = useAppDispatch();
@@ -62,8 +74,18 @@ export default function SalesReturnPage() {
   const [cart, setCart] = useState([]);
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
+
+  // Return mode: how the refund leaves the till.
   const [refundMode, setRefundMode] = useState('refund');
   const [refundTo, setRefundTo] = useState('');
+
+  // Exchange mode: what the customer is taking instead, and how the price
+  // difference against the returned items is settled.
+  const [returnType, setReturnType] = useState('return');
+  const [exchangeQuery, setExchangeQuery] = useState('');
+  const [exchangeCart, setExchangeCart] = useState([]);
+  const [settlementMode, setSettlementMode] = useState('');
+
   const [printSettingsEnabled, setPrintSettingsEnabled] = useState(false);
   const [moreActionsAnchor, setMoreActionsAnchor] = useState(null);
   const [evidence, setEvidence] = useState([]);
@@ -72,6 +94,14 @@ export default function SalesReturnPage() {
   // Snapshot of the last processed return, so "Print Return" still works
   // after Process Return has reset the working form.
   const [lastReturn, setLastReturn] = useState(null);
+
+  // Reported to the tab strip (see TabBar.jsx) so closing this tab while a
+  // return is still in progress — items picked, a note typed, evidence
+  // attached, but not yet processed — asks for confirmation instead of
+  // silently discarding it. Everything here resets to empty on a
+  // successful Process Return, so the flag clears itself the moment
+  // there's genuinely nothing left to lose.
+  useTabDirty(cart.length > 0 || exchangeCart.length > 0 || Boolean(reason) || Boolean(note) || evidence.length > 0);
 
   const { data: returnNo } = useNextSalesReturnNoQuery();
   const [lookupInvoice, { isFetching: isLookingUp }] = useLazyLookupOriginalInvoiceQuery();
@@ -82,6 +112,17 @@ export default function SalesReturnPage() {
   const returnDate = useMemo(
     () => new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date()),
     [],
+  );
+
+  // Live catalog search for the item the customer is taking in exchange —
+  // only fetched in Exchange mode (Return mode has nothing to buy, so
+  // there is nothing honest to show here). An empty query still returns
+  // the catalog's first page, so switching to Exchange shows something to
+  // browse immediately rather than a blank "type to search" box.
+  const isExchange = returnType === 'exchange';
+  const { data: productResults = [], isFetching: isSearchingProducts } = useGetProductsQuery(
+    { search: exchangeQuery.trim(), status: 'ACTIVE', pageSize: 20 },
+    { skip: !isExchange },
   );
 
   // The items panel's "returnable" figure accounts for lines already added
@@ -110,6 +151,23 @@ export default function SalesReturnPage() {
     return { subTotal, discountAmount, tax, grandTotal };
   }, [cart, originalInvoice]);
 
+  // Exchange goods are priced exactly as a normal sale (GST-inclusive, no
+  // separate discount leg), matching how the backend's resolveExchangeLines
+  // computes exchangeSubTotal/exchangeGrandTotal.
+  const exchangeTotals = useMemo(() => {
+    const grandTotal = exchangeCart.reduce((sum, line) => sum + line.qty * line.rate, 0);
+    return { grandTotal };
+  }, [exchangeCart]);
+
+  // Positive = customer owes more; negative = store owes the customer;
+  // zero = even swap, no settlement needed. Mirrors the backend's own
+  // `balanceAmount = exchangeGrandTotal - grandTotal` exactly.
+  const balanceAmount = useMemo(
+    () => round2(exchangeTotals.grandTotal - totals.grandTotal),
+    [exchangeTotals.grandTotal, totals.grandTotal],
+  );
+  const settlementMethods = balanceAmount > 0 ? SETTLEMENT_COLLECT_METHODS : SETTLEMENT_REFUND_METHODS;
+
   const handleOpenFindInvoice = () => {
     setDialogError('');
     setDialogOpen(true);
@@ -120,6 +178,7 @@ export default function SalesReturnPage() {
       const data = await lookupInvoice(billNo).unwrap();
       setOriginalInvoice(data);
       setCart([]);
+      setExchangeCart([]);
       setDialogOpen(false);
       setDialogError('');
     } catch (err) {
@@ -159,8 +218,46 @@ export default function SalesReturnPage() {
     setCart((prev) => prev.filter((line) => line.saleLineId !== saleLineId));
   };
 
+  // Exchange cart: picked from the live catalog (Scan/Search tab). No
+  // client-side stock cap — same convention LineSalePage.jsx's own
+  // addItemToCart uses ("No stock validation — items can be sold even when
+  // stock is 0"), since availableQty is only a denormalized snapshot and
+  // isn't the real source of truth. The actual limit is enforced server
+  // side: resolveExchangeLines runs the exact same FIFO lot allocator a
+  // normal sale uses, and Process Return is rejected with a clear error if
+  // there truly isn't enough stock to allocate.
+  const handleAddExchangeItem = (product) => {
+    setExchangeCart((prev) => {
+      const existing = prev.find((line) => line.productId === product.id);
+      if (existing) {
+        return prev.map((line) => (
+          line.productId === product.id ? { ...line, qty: line.qty + 1 } : line
+        ));
+      }
+      return [...prev, {
+        productId: product.id,
+        code: product.code,
+        name: product.name,
+        uom: product.uom || '',
+        rate: Number(product.salePrice) || 0,
+        qty: 1,
+        maxQty: Infinity,
+      }];
+    });
+  };
+  const handleExchangeQtyChange = (productId, qty) => {
+    setExchangeCart((prev) => prev.map((line) => (line.productId === productId ? { ...line, qty } : line)));
+  };
+  const handleRemoveExchangeItem = (productId) => {
+    setExchangeCart((prev) => prev.filter((line) => line.productId !== productId));
+  };
+
   const handleClear = () => {
     setCart([]);
+    setExchangeCart([]);
+    setReturnType('return');
+    setExchangeQuery('');
+    setSettlementMode('');
     setReason('');
     setNote('');
     setRefundTo('');
@@ -202,7 +299,7 @@ export default function SalesReturnPage() {
   // draft/pending record), so cancelling just discards the in-progress form.
   const handleOpenCancel = () => {
     setMoreActionsAnchor(null);
-    if (!originalInvoice && cart.length === 0 && evidence.length === 0 && !reason && !note) {
+    if (!originalInvoice && cart.length === 0 && exchangeCart.length === 0 && evidence.length === 0 && !reason && !note) {
       dispatch(showToast('There is no return in progress', 'info'));
       return;
     }
@@ -212,6 +309,10 @@ export default function SalesReturnPage() {
     setCancelOpen(false);
     setOriginalInvoice(null);
     setCart([]);
+    setExchangeCart([]);
+    setReturnType('return');
+    setExchangeQuery('');
+    setSettlementMode('');
     setReason('');
     setNote('');
     setRefundMode('refund');
@@ -234,20 +335,46 @@ export default function SalesReturnPage() {
       dispatch(showToast('Select a return reason first', 'warning'));
       return;
     }
-    if (refundMode === 'refund' && !refundTo) {
-      dispatch(showToast('Select where the refund is going', 'warning'));
-      return;
+    if (returnType === 'return') {
+      if (refundMode === 'refund' && !refundTo) {
+        dispatch(showToast('Select where the refund is going', 'warning'));
+        return;
+      }
+    } else {
+      if (exchangeCart.length === 0) {
+        dispatch(showToast('Add at least one item the customer is taking in exchange', 'warning'));
+        return;
+      }
+      if (Math.abs(balanceAmount) >= 0.005 && !settlementMode) {
+        dispatch(showToast(
+          balanceAmount > 0 ? 'Select how the customer is paying the balance' : 'Select how the balance is being refunded',
+          'warning',
+        ));
+        return;
+      }
     }
 
+    const settlementModeLabel = settlementMode
+      ? settlementMethods.find((m) => m.value === settlementMode)?.label || settlementMode
+      : '';
+
     try {
-      const saved = await createSalesReturn({
+      const payload = {
         saleId: originalInvoice.saleId,
         items: cart.map((line) => ({ saleLineId: line.saleLineId, qty: line.qty })),
         reason,
         note: note || undefined,
-        refundMode,
-        refundTo: refundMode === 'refund' ? refundTo : undefined,
-      }).unwrap();
+        returnType,
+      };
+      if (returnType === 'return') {
+        payload.refundMode = refundMode;
+        payload.refundTo = refundMode === 'refund' ? refundTo : undefined;
+      } else {
+        payload.exchangeItems = exchangeCart.map((line) => ({ productId: line.productId, qty: line.qty }));
+        if (Math.abs(balanceAmount) >= 0.005) payload.settlementMode = settlementMode;
+      }
+
+      const saved = await createSalesReturn(payload).unwrap();
 
       // Keep a print-ready snapshot (before the form resets below).
       const printable = {
@@ -260,6 +387,11 @@ export default function SalesReturnPage() {
         totals: { subTotal: totals.subTotal, tax: totals.tax, grandTotal: totals.grandTotal },
         refundMode,
         refundToLabel: REFUND_PAYMENT_METHODS.find((m) => m.value === refundTo)?.label || refundTo,
+        returnType,
+        exchangeLines: exchangeCart.map((line) => ({ name: line.name, qty: line.qty, rate: line.rate })),
+        exchangeTotals: { grandTotal: exchangeTotals.grandTotal },
+        balanceAmount,
+        settlementModeLabel,
         dateTime: new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date()),
       };
       setLastReturn(printable);
@@ -282,7 +414,10 @@ export default function SalesReturnPage() {
         printReturnReceipt({ ...printable, company: companyProfile, cashierName: user?.name || 'Admin' });
       }
 
-      dispatch(showToast(`Return ${saved.returnNo} processed — refund initiated`, 'success'));
+      dispatch(showToast(
+        returnType === 'exchange' ? `Exchange ${saved.returnNo} processed` : `Return ${saved.returnNo} processed — refund initiated`,
+        'success',
+      ));
 
       // Refresh the same invoice's returnable/alreadyRefunded figures (this
       // return just changed both) and reset the working cart/reason/note
@@ -290,6 +425,10 @@ export default function SalesReturnPage() {
       const refreshed = await lookupInvoice(originalInvoice.invoiceNo).unwrap();
       setOriginalInvoice(refreshed);
       setCart([]);
+      setExchangeCart([]);
+      setReturnType('return');
+      setExchangeQuery('');
+      setSettlementMode('');
       setReason('');
       setNote('');
       setRefundTo('');
@@ -303,6 +442,9 @@ export default function SalesReturnPage() {
   const handlePrintReturn = () => {
     const base = { company: companyProfile, cashierName: user?.name || 'Admin' };
     if (originalInvoice && cart.length > 0) {
+      const settlementModeLabel = settlementMode
+        ? settlementMethods.find((m) => m.value === settlementMode)?.label || settlementMode
+        : '';
       printReturnReceipt({
         ...base,
         isPreview: true,
@@ -315,6 +457,11 @@ export default function SalesReturnPage() {
         totals,
         refundMode,
         refundToLabel: REFUND_PAYMENT_METHODS.find((m) => m.value === refundTo)?.label || '',
+        returnType,
+        exchangeLines: exchangeCart.map((line) => ({ name: line.name, qty: line.qty, rate: line.rate })),
+        exchangeTotals: { grandTotal: exchangeTotals.grandTotal },
+        balanceAmount,
+        settlementModeLabel,
         dateTime: new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date()),
       });
       return;
@@ -369,29 +516,48 @@ export default function SalesReturnPage() {
       <Grid container spacing={2} sx={{ alignItems: 'stretch' }}>
         <Grid size={{ xs: 12, lg: 6 }}>
           <Box sx={{ height: { lg: 520 } }}>
-            <ReturnItemsPanel items={displayItems} onAddItem={handleAddItem} />
+            <ReturnItemsPanel
+              returnType={returnType}
+              onReturnTypeChange={setReturnType}
+              items={displayItems}
+              onAddItem={handleAddItem}
+              productQuery={exchangeQuery}
+              onProductQueryChange={setExchangeQuery}
+              productResults={productResults}
+              isSearchingProducts={isSearchingProducts}
+              onAddExchangeItem={handleAddExchangeItem}
+            />
           </Box>
         </Grid>
         <Grid size={{ xs: 12, lg: 6 }}>
           <Stack spacing={2}>
-            <Box sx={{ height: { lg: 340 } }}>
+            <Box sx={{ height: { lg: isExchange ? 260 : 340 } }}>
               <ReturnCartPanel lines={cart} onQtyChange={handleQtyChange} onRemove={handleRemove} />
             </Box>
+            {isExchange && (
+              <Box sx={{ height: { lg: 260 } }}>
+                <ExchangeCartPanel lines={exchangeCart} onQtyChange={handleExchangeQtyChange} onRemove={handleRemoveExchangeItem} />
+              </Box>
+            )}
             <Grid container spacing={2} sx={{ alignItems: 'stretch' }}>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <ReturnReasonCard reason={reason} onReasonChange={setReason} note={note} onNoteChange={setNote} reasons={RETURN_REASONS} />
               </Grid>
-              <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
-                <RefundAdjustmentCard
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <ReturnTotalsCard
+                  returnType={returnType}
+                  totals={totals}
                   refundMode={refundMode}
                   onRefundModeChange={setRefundMode}
                   refundTo={refundTo}
                   onRefundToChange={setRefundTo}
-                  paymentMethods={REFUND_PAYMENT_METHODS}
+                  refundPaymentMethods={REFUND_PAYMENT_METHODS}
+                  exchangeTotals={exchangeTotals}
+                  balanceAmount={balanceAmount}
+                  settlementMode={settlementMode}
+                  onSettlementModeChange={setSettlementMode}
+                  settlementMethods={settlementMethods}
                 />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 12, lg: 4 }}>
-                <ReturnTotalsCard totals={totals} />
               </Grid>
             </Grid>
           </Stack>
@@ -414,15 +580,22 @@ export default function SalesReturnPage() {
           )}
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          {originalInvoice ? (
+          {originalInvoice && isExchange && (
+            <ExchangeSummaryCard
+              returnedValue={totals.grandTotal}
+              exchangeValue={exchangeTotals.grandTotal}
+              balanceAmount={balanceAmount}
+              settlementModeLabel={settlementMode ? settlementMethods.find((m) => m.value === settlementMode)?.label : ''}
+            />
+          )}
+          {originalInvoice && !isExchange && (
             <RefundSummaryCard
               totalReturnAmount={totals.grandTotal}
               alreadyRefunded={originalInvoice.alreadyRefunded}
               invoicePaidAmount={originalInvoice.paidAmount}
             />
-          ) : (
-            <EmptySummaryPlaceholder title="Refund Summary" />
           )}
+          {!originalInvoice && <EmptySummaryPlaceholder title={isExchange ? 'Exchange Summary' : 'Refund Summary'} />}
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           {originalInvoice ? (
@@ -440,7 +613,7 @@ export default function SalesReturnPage() {
             onPrintReturn={handlePrintReturn}
             printSettingsEnabled={printSettingsEnabled}
             onTogglePrintSettings={setPrintSettingsEnabled}
-            disabled={cart.length === 0 || !originalInvoice || isProcessing}
+            disabled={cart.length === 0 || !originalInvoice || isProcessing || (isExchange && exchangeCart.length === 0)}
             printDisabled={!lastReturn && (cart.length === 0 || !originalInvoice)}
           />
         </Grid>
@@ -460,7 +633,7 @@ export default function SalesReturnPage() {
         <DialogTitle sx={{ fontWeight: 700 }}>Cancel this return?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            This discards the invoice, selected items, reason, refund details and attached photos on screen.
+            This discards the invoice, selected items, reason, refund/exchange details and attached photos on screen.
             Nothing has been saved yet, so stock and refunds are not affected.
           </DialogContentText>
         </DialogContent>
