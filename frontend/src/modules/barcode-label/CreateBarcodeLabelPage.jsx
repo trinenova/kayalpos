@@ -9,7 +9,6 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import AddIcon from '@mui/icons-material/Add';
-import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
 import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import SearchIcon from '@mui/icons-material/Search';
@@ -23,11 +22,12 @@ import { useGetProductsQuery } from '../../api/productApi';
 import { useGetBrandsQuery } from '../../api/brandApi';
 import {
   useGetBarcodeLabelBatchQuery, useNextBarcodeLabelCodeQuery,
-  useCreateBarcodeLabelMutation, useUpdateBarcodeLabelMutation,
+  useCreateBarcodeLabelMutation, useUpdateBarcodeLabelMutation, useGenerateBarcodeLabelMutation,
 } from '../../api/barcodeLabelApi';
 
 import LabelItemsTable from './components/LabelItemsTable';
 import LabelPrintSummaryCard from './components/LabelPrintSummaryCard';
+import BarcodePrintDialog from './components/BarcodePrintDialog';
 import { DEFAULT_TERMS } from './components/LabelTermsAndNotes';
 import {
   createBarcodeLabelSchema, createBarcodeLabelDefaultValues, emptyItemRow,
@@ -62,6 +62,10 @@ export default function CreateBarcodeLabelPage({ id: propId, onBack }) {
   const id = propId ?? paramId;
   const isEditMode = Boolean(id);
   const [moreActionsAnchor, setMoreActionsAnchor] = useState(null);
+  // Shown after "Update Batch" succeeds (see onSaveAsDraft) instead of a
+  // standing "Print / Preview" header button — the preview/print modal is
+  // the result of updating, not something sitting there beforehand.
+  const [printBatch, setPrintBatch] = useState(null);
 
   const { data: existingBatch, isLoading: isLoadingBatch } = useGetBarcodeLabelBatchQuery(id, { skip: !isEditMode });
   const { data: nextCode } = useNextBarcodeLabelCodeQuery(undefined, { skip: isEditMode });
@@ -69,6 +73,7 @@ export default function CreateBarcodeLabelPage({ id: propId, onBack }) {
   const { data: brands = [] } = useGetBrandsQuery({});
   const [createBatch, { isLoading: isCreating }] = useCreateBarcodeLabelMutation();
   const [updateBatch, { isLoading: isUpdating }] = useUpdateBarcodeLabelMutation();
+  const [generateBarcodes, { isLoading: isGenerating }] = useGenerateBarcodeLabelMutation();
   const isSaving = isCreating || isUpdating;
 
   const batchCode = isEditMode ? existingBatch?.code : nextCode;
@@ -138,7 +143,6 @@ export default function CreateBarcodeLabelPage({ id: propId, onBack }) {
     navigate('/barcode-label');
   };
 
-  const handlePrintPreview = () => dispatch(showToast('Print / Preview is coming soon', 'info'));
   const handleAddCategory = () => dispatch(showToast('Item Category picker is coming soon', 'info'));
   const handleAddBrand = () => dispatch(showToast('Brand picker is coming soon', 'info'));
   const handleAddItemRow = () => dispatch(showToast('Item picker is coming soon', 'info'));
@@ -151,17 +155,36 @@ export default function CreateBarcodeLabelPage({ id: propId, onBack }) {
     try {
       const payload = formValuesToPayload(values, { status: 'draft' });
       if (isEditMode) {
-        await updateBatch({ id, ...payload }).unwrap();
+        const updated = await updateBatch({ id, ...payload }).unwrap();
         dispatch(showToast(`Barcode & Label batch ${batchCode} updated successfully`, 'success'));
-      } else {
-        const created = await createBatch(payload).unwrap();
-        dispatch(showToast(`Barcode & Label batch ${created.code} saved as draft`, 'success'));
+        // Open the Print/Preview modal on the just-updated batch instead of
+        // navigating away — that's the only place this screen offers
+        // Print/Preview now.
+        setPrintBatch(updated);
+        return;
       }
+      const created = await createBatch(payload).unwrap();
+      dispatch(showToast(`Barcode & Label batch ${created.code} saved as draft`, 'success'));
       handleBack();
     } catch (err) {
       dispatch(showToast(err?.data?.message || 'Failed to save the batch', 'error'));
     }
   });
+
+  const handleClosePrintPreview = () => {
+    setPrintBatch(null);
+    handleBack();
+  };
+
+  const handleGenerateFromPreview = async () => {
+    if (!printBatch) return;
+    try {
+      const result = await generateBarcodes(printBatch.id).unwrap();
+      dispatch(showToast(`Barcodes generated for ${result.batch.code} and saved to history`, 'success'));
+    } catch (err) {
+      dispatch(showToast(err?.data?.message || 'Failed to generate barcodes', 'error'));
+    }
+  };
 
   const onSaveAndSend = handleSubmit(async (values) => {
     try {
@@ -212,9 +235,6 @@ export default function CreateBarcodeLabelPage({ id: propId, onBack }) {
         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', width: { xs: '100%', lg: 'auto' }, justifyContent: { xs: 'flex-start', lg: 'flex-end' } }}>
           <Button variant="outlined" color="inherit" startIcon={<ArrowBackOutlinedIcon fontSize="small" />} onClick={handleBack}>
             {isEditMode ? 'Back to Batch' : 'Back'}
-          </Button>
-          <Button variant="outlined" color="inherit" startIcon={<PrintOutlinedIcon fontSize="small" />} onClick={handlePrintPreview}>
-            Print / Preview
           </Button>
           <Button
             variant="outlined"
@@ -360,6 +380,14 @@ export default function CreateBarcodeLabelPage({ id: propId, onBack }) {
           <BottomRow />
         </Stack>
       </FormProvider>
+
+      <BarcodePrintDialog
+        open={Boolean(printBatch)}
+        onClose={handleClosePrintPreview}
+        batch={printBatch}
+        onGenerate={handleGenerateFromPreview}
+        isGenerating={isGenerating}
+      />
     </Stack>
   );
 }
