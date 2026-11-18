@@ -1,13 +1,28 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { z } from 'zod';
 
+// Load backend/.env by absolute path. Under IIS/iisnode the working directory
+// is not the backend folder, so a bare `import 'dotenv/config'` can miss it.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
 // All configuration comes from environment variables — nothing here is
-// hardcoded. DATABASE_URL is now required: the project is connected to the
+// hardcoded. DATABASE_URL is required: the project is connected to the
 // live Azure PostgreSQL instance (see backend/.env), and src/config/prisma.js
 // touches it at startup via the /api/health/db check.
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().positive().default(4000),
+
+  // PORT is normally a number (e.g. 4000), but iisnode passes a named pipe
+  // string (e.g. \\.\pipe\abc-123). Numeric strings become numbers; anything
+  // else (a pipe name) is passed through unchanged for app.listen().
+  PORT: z
+    .string()
+    .default('4000')
+    .transform((value) => (/^\d+$/.test(value) ? Number(value) : value)),
+
   // Comma-separated list of allowed frontend origins, e.g.
   // "http://localhost:5173,https://nexora-pos.azurestaticapps.net". This lets
   // the same backend serve the local Vite dev server AND the deployed Azure
