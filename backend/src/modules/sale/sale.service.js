@@ -273,9 +273,11 @@ export async function createSale({
       });
     });
 
-    const discountAmount = discountType === 'percent'
+    // Auto round-off (keep in sync with the Line Sale page): discount to a
+    // whole rupee, payable to the nearest rupee.
+    const discountAmount = Math.round(discountType === 'percent'
       ? (subTotal * discountValue) / 100
-      : Math.min(discountValue, subTotal);
+      : Math.min(discountValue, subTotal));
     // Prices are GST-inclusive: the payable is subtotal - discount, and each
     // line's GST is extracted from its share of that amount.
     const net = Math.max(subTotal - discountAmount, 0);
@@ -285,7 +287,7 @@ export async function createSale({
       return sum + (lineGross - lineGross / (1 + r));
     }, 0);
     const taxable = net - taxAmount;
-    const grandTotal = net;
+    const grandTotal = Math.round(net);
     const changeAmount = receivedAmount - grandTotal;
 
     const billNo = await nextBillNoWithinTx(tx, tenantId);

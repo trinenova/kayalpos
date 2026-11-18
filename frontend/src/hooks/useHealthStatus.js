@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { API_BASE_URL } from '../api/baseApi';
+import { resolveApiBaseUrl } from '../api/baseApi';
 
-const HEALTH_URL = `${API_BASE_URL}/health`;
 const REQUEST_TIMEOUT_MS = 5000;
 const POLL_INTERVAL_MS = 30000;
 
@@ -45,7 +44,10 @@ export function useHealthStatus({ pollIntervalMs = POLL_INTERVAL_MS } = {}) {
     let nextServices = UNKNOWN_SERVICES;
 
     try {
-      const res = await fetch(HEALTH_URL, { signal: controller.signal });
+      // Re-probe each check so failover (and fail-back) between the
+      // configured API URLs happens automatically.
+      const baseUrl = await resolveApiBaseUrl(true);
+      const res = await fetch(`${baseUrl}/health`, { signal: controller.signal });
       const body = await res.json().catch(() => null);
 
       if (body?.services) {

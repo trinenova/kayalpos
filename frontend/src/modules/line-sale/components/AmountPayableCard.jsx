@@ -106,6 +106,13 @@ export default function AmountPayableCard({ billNo, lines, totals }) {
         <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
           Disc <b style={{ color: "#fff" }}>{money(totals.discountAmount)}</b>
         </Typography>
+        <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+          Round off{" "}
+          <b style={{ color: "#fff" }}>
+            {(totals.roundOff || 0) > 0 ? "+" : (totals.roundOff || 0) < 0 ? "-" : ""}
+            {money(Math.abs(totals.roundOff || 0))}
+          </b>
+        </Typography>
         {totals.tax > 0 && (
           <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
             {gstLabel} <b style={{ color: "#fff" }}>{money(totals.tax)}</b>

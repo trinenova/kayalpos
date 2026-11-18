@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FormProvider, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -51,6 +51,15 @@ export default function LoginPage() {
     // "required" errors before the user has even reached a field.
     mode: 'onTouched',
   });
+
+  // Preselect the first outlet once the list loads, so the user doesn't have
+  // to pick one on every login. Only fills an empty field — never overrides
+  // an outlet the user already chose.
+  useEffect(() => {
+    if (outlets.length > 0 && !methods.getValues('outletId')) {
+      methods.setValue('outletId', outlets[0].id, { shouldValidate: true });
+    }
+  }, [outlets, methods]);
 
   // Login button stays disabled until every field has a value — separate
   // from the onTouched error display above, which only shows messages

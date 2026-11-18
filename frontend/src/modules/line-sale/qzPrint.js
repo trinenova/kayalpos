@@ -17,7 +17,7 @@
  *   nexora.silentPrint   - set to "off" to always use the browser dialog
  *   nexora.receiptWidth  - paper width in mm (default 80)
  */
-import { API_BASE_URL } from '../../api/baseApi';
+import { getApiBaseUrl } from '../../api/baseApi';
 import { loadPersistedAuth } from '../../features/auth/authStorage';
 
 const QZ_SRC = 'https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js';
@@ -53,14 +53,14 @@ const authHeaders = () => {
 async function configureSigning(qz) {
   qz.security.setSignatureAlgorithm('SHA512');
   qz.security.setCertificatePromise((resolve) => {
-    fetch(`${API_BASE_URL}/print/certificate`, { headers: authHeaders() })
+    fetch(`${getApiBaseUrl()}/print/certificate`, { headers: authHeaders() })
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error('no certificate'))))
       .then(resolve)
       // Not configured / offline: fall back to unsigned mode (QZ Tray prompts).
       .catch(() => resolve(''));
   });
   qz.security.setSignaturePromise((toSign) => (resolve, reject) => {
-    fetch(`${API_BASE_URL}/print/sign`, {
+    fetch(`${getApiBaseUrl()}/print/sign`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ message: toSign }),

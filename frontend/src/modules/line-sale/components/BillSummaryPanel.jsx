@@ -89,6 +89,12 @@ export default function BillSummaryPanel({
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>Discount</Typography>
           <Typography variant="body2" sx={{ fontWeight: 700 }}>{money(totals.discountAmount)}</Typography>
         </Stack>
+        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>Round off</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+            {(totals.roundOff || 0) > 0 ? '+' : (totals.roundOff || 0) < 0 ? '-' : ''}{money(Math.abs(totals.roundOff || 0))}
+          </Typography>
+        </Stack>
         {taxGroups.length > 0 && (
           <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>Taxable value</Typography>

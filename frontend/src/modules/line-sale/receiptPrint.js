@@ -87,8 +87,9 @@ export function buildReceiptHtml({
 }) {
   const paymentLabel = PAYMENT_METHODS.find((m) => m.key === paymentMethod)?.label || paymentMethod;
   const totalQty = Math.round(cart.reduce((sum, line) => sum + line.qty, 0) * 1000) / 1000;
+  // grandTotal is already rounded by the Line Sale page; roundOff comes with it.
   const roundedTotal = Math.round(totals.grandTotal);
-  const roundOff = round2(roundedTotal - totals.grandTotal);
+  const roundOff = totals.roundOff ?? round2(roundedTotal - totals.grandTotal);
 
   const itemRows = cart.map((line) => `
     <tr>

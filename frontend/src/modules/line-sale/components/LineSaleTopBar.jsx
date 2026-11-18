@@ -1,5 +1,5 @@
 import {
-  Paper, Stack, Typography, Chip, Button, ButtonGroup, IconButton, Badge, Tooltip, Menu, MenuItem,
+  Paper, Stack, Typography, Chip, Button, ButtonGroup, IconButton, Badge, Tooltip,
 } from '@mui/material';
 import { alpha, darken } from '@mui/material/styles';
 import PersonOutlineOutlinedIcon from '@mui/icons-material/PersonOutlineOutlined';
@@ -7,7 +7,6 @@ import EventOutlinedIcon from '@mui/icons-material/EventOutlined';
 import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutlined';
 import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined';
 import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FullscreenIcon from '@mui/icons-material/Fullscreen';
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
 
@@ -27,7 +26,6 @@ export default function LineSaleTopBar({
   isFullScreen, onEnterFullScreen, onExitFullScreen,
   onHoldBill, isHolding, heldCount, onOpenHeld,
   onClear,
-  moreActionsAnchor, onOpenMoreActions, onCloseMoreActions, onMoreAction,
 }) {
   return (
     <Paper variant="outlined" sx={{ borderRadius: 3, px: 2, py: 1.25, flex: 1, minWidth: 0 }}>
@@ -114,25 +112,6 @@ export default function LineSaleTopBar({
           >
             Clear
           </Button>
-
-          <Button
-            variant="outlined"
-            color="inherit"
-            endIcon={<ExpandMoreIcon />}
-            onClick={onOpenMoreActions}
-            sx={{ minHeight: 44 }}
-          >
-            More Actions
-          </Button>
-          <Menu
-            anchorEl={moreActionsAnchor}
-            open={Boolean(moreActionsAnchor)}
-            onClose={onCloseMoreActions}
-          >
-            <MenuItem onClick={() => onMoreAction('Apply Promotion')}>Apply Promotion</MenuItem>
-            <MenuItem onClick={() => onMoreAction('Redeem Voucher')}>Redeem Voucher</MenuItem>
-            <MenuItem onClick={() => onMoreAction('Void Sale')}>Void Sale</MenuItem>
-          </Menu>
         </Stack>
       </Stack>
     </Paper>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Paper, Stack, Box, Typography, Chip, IconButton, TextField, MenuItem, Button,
 } from '@mui/material';
@@ -47,12 +47,16 @@ function PriceCell({ row, onPriceChange }) {
 
 const fmtQty = (n) => String(round3(n));
 
+// Items sold by weight/fraction (Fruits...) — picking one jumps the cursor to
+// its Qty / Weight box so a decimal like 0.750 can be typed straight away.
+const isFruitProduct = (p) => /fruit/i.test(`${p?.group ?? ''} ${p?.uom ?? ''}`);
+
 // Editable quantity cell. Decimals are allowed (0.25 Kg) — up to 3
 // places — for every UOM. Like PriceCell it keeps
 // the typed text locally so partial input ("0.", ".5") works, pushes valid
 // numbers to the cart as you type, and snaps back to the cart value on blur
 // (an empty / zero entry reverts to the last valid quantity).
-function QtyCell({ row, onQtyChange }) {
+function QtyCell({ row, onQtyChange, autoFocusQty, onQtyFocused }) {
   const unit = { uom: row.enteredUom };
   const step = stepFor(unit);
   const min = minQtyFor(unit);
@@ -61,6 +65,19 @@ function QtyCell({ row, onQtyChange }) {
   useEffect(() => {
     if (!focused) setText(fmtQty(row.enteredQty));
   }, [row.enteredQty, focused]);
+
+  const inputRef = useRef(null);
+  // Runs after ItemSearchCell has handed focus back to the blank row (it does
+  // so in a setTimeout 0), hence the short delay.
+  useEffect(() => {
+    if (!autoFocusQty) return undefined;
+    const id = setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+      onQtyFocused?.();
+    }, 60);
+    return () => clearTimeout(id);
+  }, [autoFocusQty, onQtyFocused]);
 
   const commit = (n) => onQtyChange?.(row.key, n);
   return (
@@ -78,6 +95,17 @@ function QtyCell({ row, onQtyChange }) {
         size="small"
         variant="outlined"
         value={text}
+        inputRef={inputRef}
+        onKeyDown={(e) => {
+          // Enter / Tab = done with this quantity: leave the box and move on
+          // to the next item entry (the blank row's Barcode field).
+          if (e.key !== 'Enter' && !(e.key === 'Tab' && !e.shiftKey)) return;
+          const rows = e.currentTarget.closest('tr')?.parentElement?.children;
+          const next = rows?.[rows.length - 1]?.querySelector('input');
+          if (!next) return;
+          e.preventDefault();
+          next.focus();
+        }}
         onFocus={(e) => { setFocused(true); e.target.select(); }}
         onBlur={() => setFocused(false)}
         onChange={(e) => {
@@ -126,6 +154,8 @@ export default function CurrentSaleTable({
 }) {
   const index = useItemSearchIndex(products);
   const [recentOpen, setRecentOpen] = useState(false);
+  // Product code whose Qty box should grab focus (set when a fruit is picked).
+  const [qtyFocusCode, setQtyFocusCode] = useState(null);
 
   const rows = useMemo(() => [...lines, BLANK_ROW], [lines]);
   // Every Item Name box takes the width of the longest name on the bill.
@@ -139,9 +169,11 @@ export default function CurrentSaleTable({
   // swaps that line's item.
   // `barcode` is the barcode the item was scanned / picked with (if any): a
   // barcode with its own price bills the line at that price and UOM.
-  const selectForRow = (row) => (code, barcode = null) => (
-    row.blank ? onAddItem(code, barcode) : onReplaceItem(row.key, code, barcode)
-  );
+  const selectForRow = (row) => (code, barcode = null) => {
+    if (row.blank) onAddItem(code, barcode);
+    else onReplaceItem(row.key, code, barcode);
+    if (isFruitProduct(products.find((p) => p.code === code))) setQtyFocusCode(code);
+  };
 
   const columns = [
     { key: 'index', label: '#', width: '4%', render: (_row, i) => i + 1 },
@@ -196,7 +228,14 @@ export default function CurrentSaleTable({
       key: 'qty',
       label: 'Qty / Weight',
       width: '17%',
-      render: (row) => (row.blank ? null : <QtyCell row={row} onQtyChange={onQtyChange} />),
+      render: (row) => (row.blank ? null : (
+        <QtyCell
+          row={row}
+          onQtyChange={onQtyChange}
+          autoFocusQty={qtyFocusCode === row.code}
+          onQtyFocused={() => setQtyFocusCode(null)}
+        />
+      )),
     },
     {
       key: 'total',

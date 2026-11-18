@@ -499,10 +499,13 @@ export default function LineSalePage() {
 
   const totals = useMemo(() => {
     const subTotal = cart.reduce((sum, line) => sum + line.qty * line.price, 0);
-    const discountAmount =
+    // Auto round-off: the discount is rounded to a whole rupee and the
+    // payable to the nearest rupee (keep in sync with sale.service.js).
+    const discountAmount = Math.round(
       discountType === "percent"
         ? (subTotal * discount) / 100
-        : Math.min(discount, subTotal);
+        : Math.min(discount, subTotal),
+    );
     // Prices include GST: payable = subtotal - discount; each line's GST is
     // extracted from its share of that amount (rate 0 -> no GST).
     const net = Math.max(subTotal - discountAmount, 0);
@@ -520,11 +523,12 @@ export default function LineSalePage() {
       }
     });
     const taxable = net - tax;
-    const grandTotal = round2(net);
+    const grandTotal = Math.round(net);
+    const roundOff = round2(grandTotal - net);
     const taxGroups = [...byRate.values()]
       .sort((a, b) => a.rate - b.rate)
       .map((g) => ({ rate: g.rate, taxable: round2(g.taxable), tax: round2(g.tax) }));
-    return { subTotal: round2(subTotal), discountAmount: round2(discountAmount), taxable: round2(taxable), tax: round2(tax), grandTotal, taxGroups };
+    return { subTotal: round2(subTotal), discountAmount: round2(discountAmount), taxable: round2(taxable), tax: round2(tax), roundOff, grandTotal, taxGroups };
   }, [cart, discount, discountType]);
 
   const totalQty = useMemo(() => round3(cart.reduce((sum, line) => sum + line.qty, 0)), [cart]);
