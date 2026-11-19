@@ -374,7 +374,7 @@ export default function CreateBarcodeLabelPage({ id: propId, onBack }) {
 
           <Paper variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, sm: 2.5 } }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>Items</Typography>
-            <LabelItemsTable onAddItem={handleAddItemRow} products={products} />
+            <LabelItemsTable products={products} />
           </Paper>
 
           <BottomRow />

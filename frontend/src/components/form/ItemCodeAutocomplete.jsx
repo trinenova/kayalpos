@@ -1,5 +1,15 @@
+import { useState } from 'react';
 import { Autocomplete, TextField, Box, Typography } from '@mui/material';
 import { Controller } from 'react-hook-form';
+
+// autoExpand sizing: the field never drops below AUTO_EXPAND_MIN_WIDTH (so it
+// stays large even when empty or holding a short code) and grows with the
+// longest of the selected code / what's being typed. The width is measured by
+// the browser from a hidden sizer that uses the input's own typography (no
+// character-width guessing, so uppercase/hyphenated codes are never cut), plus
+// a fixed allowance for the input padding and the clear/dropdown icons.
+export const AUTO_EXPAND_MIN_WIDTH = 220;
+const AUTO_EXPAND_ICON_ALLOWANCE = 88;
 
 /**
  * Item Code cell for every line-items grid across the app (Stock Indent/
@@ -20,10 +30,15 @@ import { Controller } from 'react-hook-form';
  * If the row's current itemCode doesn't match anything in `products` (a
  * legacy row, or the catalog hasn't loaded yet), the raw code is still shown
  * as free-standing text rather than silently blanking the field.
+ *
+ * `autoExpand` (opt-in, used by Barcode & Label): the field keeps a large
+ * minimum width and widens to fit its content instead of truncating to "P…".
  */
 export default function ItemCodeAutocomplete({
-  control, name, products = [], onSelectProduct, placeholder = 'Search Item Code', disabled = false, compact = false,
+  control, name, products = [], onSelectProduct, placeholder = 'Search Item Code', disabled = false, compact = false, autoExpand = false,
 }) {
+  const [typed, setTyped] = useState('');
+
   return (
     <Controller
       name={name}
@@ -32,7 +47,11 @@ export default function ItemCodeAutocomplete({
         const matched = products.find((p) => p.code === field.value);
         const value = matched || (field.value ? { code: field.value, name: '' } : null);
 
-        return (
+        const sizerText = (typed.length > (matched?.code || field.value || '').length
+          ? typed
+          : (matched?.code || field.value || ''));
+
+        const autocomplete = (
           <Autocomplete
             size="small"
             fullWidth
@@ -60,6 +79,7 @@ export default function ItemCodeAutocomplete({
               );
             } : undefined}
             isOptionEqualToValue={(opt, val) => opt.code === val?.code}
+            onInputChange={autoExpand ? (_e, text) => setTyped(text || '') : undefined}
             onChange={(_e, newValue) => {
               field.onChange(newValue?.code || '');
               if (newValue) onSelectProduct?.(newValue);
@@ -69,6 +89,31 @@ export default function ItemCodeAutocomplete({
             )}
             noOptionsText="No matching products"
           />
+        );
+
+        if (!autoExpand) return autocomplete;
+        // width: max-content (driven by the hidden sizer) makes the table
+        // column widen with the content; minWidth keeps it large when the
+        // content is short or empty, and 100% lets it fill a wider cell.
+        return (
+          <Box sx={{ position: 'relative', width: 'max-content', minWidth: `max(100%, ${AUTO_EXPAND_MIN_WIDTH}px)` }}>
+            <Box
+              component="span"
+              aria-hidden
+              sx={{
+                typography: 'body1',
+                display: 'block',
+                height: 0,
+                overflow: 'hidden',
+                visibility: 'hidden',
+                whiteSpace: 'pre',
+                pr: `${AUTO_EXPAND_ICON_ALLOWANCE}px`,
+              }}
+            >
+              {sizerText}
+            </Box>
+            {autocomplete}
+          </Box>
         );
       }}
     />

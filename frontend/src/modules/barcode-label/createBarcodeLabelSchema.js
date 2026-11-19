@@ -66,7 +66,9 @@ export const SORT_BY_OPTIONS = [
 
 export function emptyItemRow() {
   return {
-    selected: false,
+    // The grid has no checkbox column any more, so every row is part of the
+    // batch from the moment it exists.
+    selected: true,
     itemCode: '',
     itemName: '',
     hsnCode: '',

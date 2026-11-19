@@ -38,7 +38,8 @@ export default function LabelPrintSummaryCard() {
   const { control } = useFormContext();
   const items = useWatch({ control, name: 'items' });
 
-  const selectedRows = items.filter((row) => row.selected);
+  // Blank rows (no Item Code yet) don't count, so an untouched form reads 0.
+  const selectedRows = items.filter((row) => row.selected && row.itemCode?.trim());
   const totalItems = selectedRows.length;
   const totalLabels = selectedRows.reduce((sum, row) => sum + toNumber(row.printQty), 0);
   const totalLabelsToPrint = totalLabels;

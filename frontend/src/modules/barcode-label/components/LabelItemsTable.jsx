@@ -1,5 +1,5 @@
 import {
-  Box, Table, TableHead, TableBody, TableRow, TableCell, TextField, Checkbox,
+  Box, Table, TableHead, TableBody, TableRow, TableCell, TextField,
   IconButton, InputAdornment, Stack, Button,
 } from '@mui/material';
 import { Controller, useFormContext, useFieldArray } from 'react-hook-form';
@@ -11,8 +11,8 @@ import ItemCodeAutocomplete from '../../../components/form/ItemCodeAutocomplete'
 import { emptyItemRow } from '../createBarcodeLabelSchema';
 
 const COLUMNS = [
-  { key: 'itemCode', label: 'Item Code', minWidth: 130 },
-  { key: 'itemName', label: 'Item Name', minWidth: 160 },
+  { key: 'itemCode', label: 'Item Code', minWidth: 220 },
+  { key: 'itemName', label: 'Item Name', minWidth: 220 },
   { key: 'hsnCode', label: 'HSN Code', minWidth: 110 },
   { key: 'uom', label: 'UoM', minWidth: 90 },
   { key: 'barcode', label: 'Barcode', minWidth: 150 },
@@ -24,26 +24,25 @@ const COLUMNS = [
 /**
  * Inline, editable line-items grid for the Create Barcode & Label form —
  * same spreadsheet-style row entry as QuotationItemsTable/OrderItemsTable/
- * InvoiceItemsTable, but with a per-row selection checkbox (Total
- * Items/Labels below only count checked rows, matching the reference,
- * where every row starts unchecked and the totals read 0.00) and no
- * pricing columns since a label batch isn't a priced document. Item Code is
- * a searchable select (ItemCodeAutocomplete) backed by the real Product
- * master; picking a product autofills Item Name/HSN/UoM only — Print Qty
+ * InvoiceItemsTable, but with no pricing columns since a label batch isn't a
+ * priced document. There is no per-row checkbox in the UI: every row is
+ * included in the batch (emptyItemRow() defaults `selected: true`, which is
+ * what the validation/payload/totals still key off). Item Code is
+ * a searchable select (ItemCodeAutocomplete, autoExpand so it stays large and
+ * widens to its content) backed by the real Product master; picking a product autofills Item Name/HSN/UoM only — Print Qty
  * and the serial/batch range are always left for manual entry.
  */
-export default function LabelItemsTable({ onAddItem, products = [] }) {
+export default function LabelItemsTable({ products = [] }) {
   const { control } = useFormContext();
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
   return (
     <Stack spacing={1.5}>
       <Box sx={{ overflowX: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-        <Table size="small" sx={{ minWidth: 1080 }}>
+        <Table size="small" sx={{ minWidth: 1136 }}>
           <TableHead>
             <TableRow sx={{ '& th': { fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap', bgcolor: 'rgba(0,0,0,0.02)' } }}>
               <TableCell sx={{ width: 44 }}>#</TableCell>
-              <TableCell sx={{ width: 44 }} />
               {COLUMNS.map((col) => (
                 <TableCell key={col.key} sx={{ minWidth: col.minWidth }}>{col.label}</TableCell>
               ))}
@@ -68,15 +67,6 @@ export default function LabelItemsTable({ onAddItem, products = [] }) {
         >
           Add Row
         </Button>
-        <Button
-          variant="outlined"
-          color="warning"
-          size="small"
-          startIcon={<AddIcon fontSize="small" />}
-          onClick={onAddItem}
-        >
-          Add Item
-        </Button>
       </Stack>
     </Stack>
   );
@@ -90,24 +80,12 @@ function ItemRow({
     <TableRow sx={{ '& td': { py: 0.75 } }}>
       <TableCell sx={{ color: 'text.secondary' }}>{index + 1}</TableCell>
       <TableCell>
-        <Controller
-          name={`items.${index}.selected`}
-          control={control}
-          render={({ field }) => (
-            <Checkbox
-              checked={Boolean(field.value)}
-              onChange={(e) => field.onChange(e.target.checked)}
-              size="small"
-            />
-          )}
-        />
-      </TableCell>
-      <TableCell>
         <ItemCodeAutocomplete
           control={control}
           name={`items.${index}.itemCode`}
           products={products}
           compact
+          autoExpand
           onSelectProduct={(product) => {
             setValue(`items.${index}.itemName`, product.name, { shouldDirty: true });
             setValue(`items.${index}.hsnCode`, product.hsnSac || '', { shouldDirty: true });
@@ -125,7 +103,21 @@ function ItemRow({
         <Controller
           name={`items.${index}.itemName`}
           control={control}
-          render={({ field }) => <TextField {...field} size="small" fullWidth placeholder="Item Name" />}
+          render={({ field }) => (
+            // Single line always: the box keeps a large minimum width and
+            // widens to fit the item name (hidden sizer measures the real
+            // text), so long names are fully visible without wrapping.
+            <Box sx={{ position: 'relative', width: 'max-content', minWidth: 'max(100%, 220px)' }}>
+              <Box
+                component="span"
+                aria-hidden
+                sx={{ typography: 'body1', display: 'block', height: 0, overflow: 'hidden', visibility: 'hidden', whiteSpace: 'pre', pr: '40px' }}
+              >
+                {field.value || ''}
+              </Box>
+              <TextField {...field} size="small" fullWidth placeholder="Item Name" />
+            </Box>
+          )}
         />
       </TableCell>
       <TableCell>
