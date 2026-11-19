@@ -99,6 +99,9 @@ export async function lookupOriginalInvoice(tenantId, billNo) {
     const lineKey = lineIdOf(line.docEntry, line.lineId);
     const alreadyReturned = returnedByLine[lineKey] || 0;
     const qty = Number(line.quantity);
+    // What this line actually sold for on the invoice (its "Amount" column) —
+    // not the product master's MRP, which can differ from the billed price.
+    const lineTotal = Number(line.lineTotal) || 0;
     return {
       saleLineId: lineKey,
       productId: line.productId,
@@ -108,6 +111,7 @@ export async function lookupOriginalInvoice(tenantId, billNo) {
       rate: Number(line.price),
       taxRate: Number(line.taxRate),
       mrp: mrpByProductId[line.productId] || Number(line.price),
+      amount: lineTotal > 0 ? round2(lineTotal) : round2(Number(line.price) * qty),
       saleQty: qty,
       returnableQty: Math.max(qty - alreadyReturned, 0),
     };

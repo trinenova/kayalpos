@@ -106,11 +106,20 @@ export default function ReturnItemsPanel({
       ),
     },
     {
-      key: 'mrp',
-      label: 'MRP',
+      // The amount this line was actually billed for on the original invoice
+      // (same figure as the invoice's Amount column) — never the product's MRP.
+      key: 'amount',
+      label: 'Amount',
       width: '18%',
       wrap: true,
-      render: (row) => <Typography variant="body2" sx={{ fontWeight: 700 }}>{formatCurrency(row.mrp, { decimals: true })}</Typography>,
+      render: (row) => (
+        <Box>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>{formatCurrency(row.amount, { decimals: true })}</Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+            @ {formatCurrency(row.rate, { decimals: true })}
+          </Typography>
+        </Box>
+      ),
     },
     {
       key: 'add',
