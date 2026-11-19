@@ -1,5 +1,16 @@
 import * as dashboardService from './dashboard.service.js';
 import { isOutletAllowed } from '../../utils/outletScope.js';
+import { getAccess } from '../permission/permission.service.js';
+
+// Administrators (accounts with no restricted role) see every bill; any other
+// user only sees the bills they rang up themselves. Returns null for "no
+// restriction", otherwise the { userId, name } the dashboard queries filter by.
+// Same rule as sale.routes.js's ownScope — role is read from the database (via
+// authorize.js's req.access), never trusted from the client.
+async function ownScope(req) {
+  const access = req.access || await getAccess(req.user.id);
+  return access.isSuperAdmin ? null : { userId: req.user.id, name: req.user.name };
+}
 
 export async function getHomeSummaryHandler(req, res, next) {
   try {
@@ -18,6 +29,7 @@ export async function getHomeSummaryHandler(req, res, next) {
     const data = await dashboardService.getHomeSummary(req.user.tenantId, outletId, {
       salesPeriod: req.query.salesPeriod,
       topSellingPeriod: req.query.topSellingPeriod,
+      own: await ownScope(req),
     });
     res.json({ success: true, data });
   } catch (err) {
@@ -29,8 +41,9 @@ export async function getManagementSummaryHandler(req, res, next) {
   try {
     // Tenant-wide (not outlet-scoped, unlike Home) — this page is a whole-
     // business overview, and its own DashboardDateControl has no outlet
-    // picker. tenantId always comes from the JWT, never the client.
-    const data = await dashboardService.getManagementSummary(req.user.tenantId);
+    // picker. tenantId always comes from the JWT, never the client. Bill-based
+    // figures are limited to the user's own bills unless they're an admin.
+    const data = await dashboardService.getManagementSummary(req.user.tenantId, await ownScope(req));
     res.json({ success: true, data });
   } catch (err) {
     next(err);

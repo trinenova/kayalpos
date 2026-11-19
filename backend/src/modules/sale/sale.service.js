@@ -399,13 +399,13 @@ export async function getDiscountSummary(tenantId) {
  * receivedAmount always covers its grandTotal, so only under-paid/credit
  * sales contribute here.
  */
-export async function getSalesOverviewSummary(tenantId) {
+export async function getSalesOverviewSummary(tenantId, own = null) {
   const startOfMonth = new Date();
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
 
   const sales = await prisma.tczOpos.findMany({
-    where: { tenantId },
+    where: { tenantId, ...ownerFilter(own) },
     select: { grandTotal: true, received: true, createDate: true },
   });
 
@@ -430,9 +430,9 @@ export async function getSalesOverviewSummary(tenantId) {
  * per row. Keyed by customerId; a customer with no sales simply has no
  * entry (the caller treats that as all-zero).
  */
-export async function getCustomerPurchaseSummaries(tenantId) {
+export async function getCustomerPurchaseSummaries(tenantId, own = null) {
   const sales = await prisma.tczOpos.findMany({
-    where: { tenantId, customerId: { not: null } },
+    where: { tenantId, customerId: { not: null }, ...ownerFilter(own) },
     select: { customerId: true, grandTotal: true, received: true },
   });
 

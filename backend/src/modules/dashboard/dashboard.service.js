@@ -1,5 +1,5 @@
 import { prisma } from '../../config/prisma.js';
-import { getSalesOverviewSummary, getCustomerPurchaseSummaries } from '../sale/sale.service.js';
+import { getSalesOverviewSummary, getCustomerPurchaseSummaries, ownerFilter } from '../sale/sale.service.js';
 import { asSale } from '../sale/tczSaleView.js';
 
 /**
@@ -13,6 +13,14 @@ import { asSale } from '../sale/tczSaleView.js';
  * function's own doc comment says exactly what proxy was used instead, or
  * that the field stays zero because nothing backs it yet — never a
  * fabricated number standing in for one.
+ *
+ * Who sees which bills: every bill-based figure (sales, orders, payment mix,
+ * top sellers, recent transactions, receivables ...) takes an `own` scope
+ * from the controller. Administrators pass `null` and see every bill; any
+ * other user passes `{ userId, name }` and only sees the bills they rang up
+ * themselves (same `ownerFilter` rule the Line Sale / reports screens use).
+ * Figures that aren't bills (products, customers, stock documents, expenses)
+ * stay business-wide.
  */
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -276,8 +284,9 @@ async function getRecentTransactions(tenantId, outletFilter) {
   }));
 }
 
-export async function getHomeSummary(tenantId, outletId, { salesPeriod = 'month', topSellingPeriod = 'month' } = {}) {
-  const outletFilter = outletId ? { outletId } : {};
+export async function getHomeSummary(tenantId, outletId, { salesPeriod = 'month', topSellingPeriod = 'month', own = null } = {}) {
+  // Outlet + "only the bills this user made" (no-op for admins).
+  const outletFilter = { ...(outletId ? { outletId } : {}), ...ownerFilter(own) };
 
   const [
     salesStats, inventoryStats, customerStats, salesOverview, topSellingItems, paymentSummary, recentTransactions,
@@ -337,7 +346,7 @@ function monthStart(date = new Date()) {
  *   (`expenseDate`, not `createdAt`, same reasoning as the Expense model's
  *   own doc comment).
  */
-async function getSalesPurchaseProfit(tenantId) {
+async function getSalesPurchaseProfit(tenantId, own = null) {
   const today = dayBounds(0);
   const yesterday = dayBounds(1);
 
@@ -345,11 +354,11 @@ async function getSalesPurchaseProfit(tenantId) {
     salesToday, salesYesterday, purchaseToday, purchaseYesterday, expenseToday, expenseYesterday,
   ] = await Promise.all([
     prisma.tczOpos.aggregate({
-      where: { tenantId, docStatus: 'COMPLETED', createDate: { gte: today.start, lte: today.end } },
+      where: { tenantId, ...ownerFilter(own), docStatus: 'COMPLETED', createDate: { gte: today.start, lte: today.end } },
       _sum: { grandTotal: true },
     }),
     prisma.tczOpos.aggregate({
-      where: { tenantId, docStatus: 'COMPLETED', createDate: { gte: yesterday.start, lte: yesterday.end } },
+      where: { tenantId, ...ownerFilter(own), docStatus: 'COMPLETED', createDate: { gte: yesterday.start, lte: yesterday.end } },
       _sum: { grandTotal: true },
     }),
     prisma.stockReceipt.aggregate({
@@ -481,11 +490,11 @@ async function getOperationalAlerts(tenantId, inventory) {
  * "Unassigned" bucket convention as sale.service.js's getDiscountSummary for
  * any sale recorded before the outletId column existed.
  */
-async function getSalesByOutlet(tenantId) {
+async function getSalesByOutlet(tenantId, own = null) {
   const today = dayBounds(0);
   const [sales, outlets] = await Promise.all([
     prisma.tczOpos.findMany({
-      where: { tenantId, docStatus: 'COMPLETED', createDate: { gte: today.start, lte: today.end } },
+      where: { tenantId, ...ownerFilter(own), docStatus: 'COMPLETED', createDate: { gte: today.start, lte: today.end } },
       select: { outletId: true, grandTotal: true },
     }),
     prisma.outlet.findMany({ where: { tenantId }, select: { id: true, name: true } }),
@@ -518,13 +527,13 @@ async function getSalesByOutlet(tenantId) {
  * share metric, not a real target vs. achievement figure — flagging this
  * plainly rather than pretending a target-setting feature exists.
  */
-async function getOutletPerformance(tenantId) {
+async function getOutletPerformance(tenantId, own = null) {
   const today = dayBounds(0);
   const outlets = await prisma.outlet.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true } });
   if (outlets.length === 0) return [];
 
   const sales = await prisma.tczOpos.findMany({
-    where: { tenantId, docStatus: 'COMPLETED', createDate: { gte: today.start, lte: today.end } },
+    where: { tenantId, ...ownerFilter(own), docStatus: 'COMPLETED', createDate: { gte: today.start, lte: today.end } },
     select: { outletId: true, grandTotal: true },
   });
 
@@ -583,11 +592,11 @@ async function getExpenseSummary(tenantId) {
  * movement total (there is no stock ledger yet — Product.availableQty is a
  * single running counter, per its own doc comment).
  */
-async function getInventorySummary(tenantId, inventory) {
+async function getInventorySummary(tenantId, inventory, own = null) {
   const today = dayBounds(0);
   const [soldToday, receivedToday] = await Promise.all([
     prisma.tczPos1.aggregate({
-      where: { header: { tenantId, docStatus: 'COMPLETED', createDate: { gte: today.start, lte: today.end } } },
+      where: { header: { tenantId, ...ownerFilter(own), docStatus: 'COMPLETED', createDate: { gte: today.start, lte: today.end } } },
       _sum: { lineTotal: true },
     }),
     prisma.stockReceipt.aggregate({
@@ -628,15 +637,15 @@ async function getInventorySummary(tenantId, inventory) {
  *   Reported as zero rather than inventing a number, until a real
  *   Accounts-Payable ledger exists.
  */
-async function getReceivablesPayables(tenantId) {
+async function getReceivablesPayables(tenantId, own = null) {
   const cutoff30 = new Date();
   cutoff30.setDate(cutoff30.getDate() - 30);
 
   const [overview, customerSummaries, overdueSales] = await Promise.all([
-    getSalesOverviewSummary(tenantId),
-    getCustomerPurchaseSummaries(tenantId),
+    getSalesOverviewSummary(tenantId, own),
+    getCustomerPurchaseSummaries(tenantId, own),
     prisma.tczOpos.findMany({
-      where: { tenantId, createDate: { lte: cutoff30 } },
+      where: { tenantId, ...ownerFilter(own), createDate: { lte: cutoff30 } },
       select: { grandTotal: true, received: true },
     }),
   ]);
@@ -657,11 +666,11 @@ async function getReceivablesPayables(tenantId) {
  * calendar month instead of the day. `totalSales` reuses
  * sale.service.js's own getSalesOverviewSummary rather than re-querying.
  */
-async function getProfitOverview(tenantId) {
+async function getProfitOverview(tenantId, own = null) {
   const start = monthStart();
 
   const [overview, purchaseAgg, expenseAgg] = await Promise.all([
-    getSalesOverviewSummary(tenantId),
+    getSalesOverviewSummary(tenantId, own),
     prisma.stockReceipt.aggregate({
       where: { tenantId, status: 'received', receivedOn: { gte: start } },
       _sum: { totalEstimatedValue: true },
@@ -683,24 +692,25 @@ async function getProfitOverview(tenantId) {
   };
 }
 
-export async function getManagementSummary(tenantId) {
+export async function getManagementSummary(tenantId, own = null) {
+  const billScope = ownerFilter(own);
   const inventory = await getProductInventory(tenantId);
 
   const [
     salesPurchaseProfit, alerts, salesByOutlet, paymentMethodSummary, topSellingItems,
     outletPerformance, expenseSummary, inventorySummary, receivablesPayables, profitOverview, salesTrend,
   ] = await Promise.all([
-    getSalesPurchaseProfit(tenantId),
+    getSalesPurchaseProfit(tenantId, own),
     getOperationalAlerts(tenantId, inventory),
-    getSalesByOutlet(tenantId),
-    getPaymentSummary(tenantId, {}),
-    getTopSellingItems(tenantId, {}, 'month'),
-    getOutletPerformance(tenantId),
+    getSalesByOutlet(tenantId, own),
+    getPaymentSummary(tenantId, billScope),
+    getTopSellingItems(tenantId, billScope, 'month'),
+    getOutletPerformance(tenantId, own),
     getExpenseSummary(tenantId),
-    getInventorySummary(tenantId, inventory),
-    getReceivablesPayables(tenantId),
-    getProfitOverview(tenantId),
-    getSalesOverview(tenantId, {}, 'month'),
+    getInventorySummary(tenantId, inventory, own),
+    getReceivablesPayables(tenantId, own),
+    getProfitOverview(tenantId, own),
+    getSalesOverview(tenantId, billScope, 'month'),
   ]);
 
   return {
